@@ -1,0 +1,988 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#2E6B3F">
+<title>Plat &amp; Plant</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F1F3EE; --surface:#FFFFFF; --sunk:#E6EAE2; --ink:#1E2A22; --muted:#5B685F; --line:#D6DDD3;
+  --leaf:#2E6B3F; --leaf-soft:#DCEBDD; --water:#2470B3; --water-soft:#DBEAF6; --warn:#B0502A; --warn-soft:#F6E3D9;
+  --amber:#8A6512; --amber-soft:#F4EBD0;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#131915; --surface:#1C241F; --sunk:#252F28; --ink:#E5ECE6; --muted:#9BA89F; --line:#2F3A33;
+    --leaf:#82C796; --leaf-soft:#22352A; --water:#73B6EC; --water-soft:#1B2E40; --warn:#EB9670; --warn-soft:#3A2419;
+    --amber:#E3C26E; --amber-soft:#3A3119;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#131915; --surface:#1C241F; --sunk:#252F28; --ink:#E5ECE6; --muted:#9BA89F; --line:#2F3A33;
+  --leaf:#82C796; --leaf-soft:#22352A; --water:#73B6EC; --water-soft:#1B2E40; --warn:#EB9670; --warn-soft:#3A2419;
+  --amber:#E3C26E; --amber-soft:#3A3119;
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:border-box}
+html{height:100%;scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);
+  font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  font-size:17px;line-height:1.45;-webkit-font-smoothing:antialiased}
+img{max-width:100%;display:block}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--water);outline-offset:2px}
+.wrap{max-width:560px;margin:0 auto;padding:20px 18px 120px}
+
+/* header */
+.top h1{font-size:44px;line-height:1;margin:6px 0 6px;font-weight:700;letter-spacing:-.02em;font-variation-settings:"opsz" 96}
+.top .date{color:var(--muted);margin:0}
+.season{margin:18px 0 6px;display:flex;gap:12px;align-items:flex-start;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
+.season svg{flex:none;margin-top:2px}
+.season b{font-weight:600}
+.season p{margin:0;color:var(--muted);font-size:15px}
+
+h2{font-size:21px;font-weight:600;margin:30px 0 10px;letter-spacing:-.01em}
+h2 .count{color:var(--muted);font-weight:400}
+
+/* plant rows */
+.row{display:flex;gap:14px;align-items:center;padding:12px;background:var(--surface);border-radius:16px;margin-bottom:10px;border:1px solid var(--line)}
+.row.due{border-color:color-mix(in srgb,var(--water) 45%,var(--line))}
+.row.late{border-color:color-mix(in srgb,var(--warn) 50%,var(--line))}
+.thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;flex:none;background:var(--sunk)}
+.thumb.ph{display:grid;place-items:center;color:var(--muted)}
+.row .info{flex:1;min-width:0;cursor:pointer;background:none;border:0;padding:0;text-align:left}
+.row .name{font-weight:600;font-size:18px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.row .meta{color:var(--muted);font-size:14.5px;margin-top:2px}
+.row .when{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:14.5px}
+.row .when.late{color:var(--warn);font-weight:600}
+.row .when.due{color:var(--water);font-weight:600}
+.chip{display:inline-block;font-size:13px;padding:2px 8px;border-radius:99px;background:var(--amber-soft);color:var(--amber);margin-left:4px;font-weight:500}
+.water-btn{flex:none;border:0;border-radius:14px;background:var(--water);color:#fff;padding:12px 14px;font-weight:600;font-size:15px;line-height:1.15;min-width:86px}
+:root[data-theme="dark"] .water-btn{color:#0E1A24}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .water-btn{color:#0E1A24}}
+.water-btn small{display:block;font-weight:500;opacity:.85;font-size:12.5px}
+.ghost-btn{flex:none;border:1px solid var(--line);border-radius:14px;background:transparent;padding:10px 12px;font-size:14.5px;color:var(--muted)}
+
+.empty{text-align:center;padding:36px 20px;background:var(--surface);border:1px dashed var(--line);border-radius:18px;margin-top:24px}
+.empty p{color:var(--muted);margin:6px 0 18px}
+.allgood{display:flex;gap:12px;align-items:center;background:var(--leaf-soft);color:var(--leaf);padding:14px 16px;border-radius:14px;font-weight:500}
+
+/* grid */
+.room{margin-top:26px}
+.room h2{margin-top:0}
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px}
+.tile{position:relative;border:0;padding:0;border-radius:16px;overflow:hidden;aspect-ratio:4/5;background:var(--sunk);text-align:left}
+.tile img{width:100%;height:100%;object-fit:cover}
+.tile .lbl{position:absolute;left:0;right:0;bottom:0;padding:28px 12px 10px;color:#fff;background:linear-gradient(transparent,rgba(0,0,0,.72))}
+.tile .lbl b{display:block;font-size:17px;font-weight:600;line-height:1.2}
+.tile .lbl span{font-size:13.5px;opacity:.9}
+.tile .ph{width:100%;height:100%;display:grid;place-items:center;color:var(--muted)}
+.tile .gauge{position:absolute;top:10px;right:10px;background:rgba(255,255,255,.88);border-radius:99px;padding:5px}
+
+/* tab bar */
+.tabs{position:fixed;left:0;right:0;bottom:0;padding-bottom:env(safe-area-inset-bottom,0px);background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-top:1px solid var(--line);z-index:20}
+.tabs .in{max-width:560px;margin:0 auto;display:flex;align-items:center;justify-content:space-around;padding:8px 10px}
+.tab{background:none;border:0;padding:6px 14px;color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:2px;font-size:13px;font-weight:500}
+.tab[aria-current="page"]{color:var(--leaf)}
+.add-fab{border:0;background:var(--leaf);color:var(--bg);width:54px;height:54px;border-radius:18px;display:grid;place-items:center;margin-top:-22px;box-shadow:0 6px 18px color-mix(in srgb,var(--leaf) 35%,transparent)}
+
+/* sheet */
+.sheet{position:fixed;inset:0;background:var(--bg);z-index:30;overflow-y:auto;-webkit-overflow-scrolling:touch;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+.sheet[hidden]{display:none}
+.sheet-head{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:10px 12px;background:color-mix(in srgb,var(--bg) 92%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.sheet-head h3{margin:0;font-size:18px;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{border:0;background:var(--surface);width:42px;height:42px;border-radius:12px;display:grid;place-items:center;border:1px solid var(--line)}
+.sheet .body{max-width:560px;margin:0 auto;padding:6px 18px 60px}
+
+.hero{border-radius:20px;overflow:hidden;background:var(--sunk);aspect-ratio:4/3}
+.hero img{width:100%;height:100%;object-fit:cover}
+.hero .ph{width:100%;height:100%;display:grid;place-items:center;color:var(--muted)}
+.d-title{font-size:34px;font-weight:700;letter-spacing:-.02em;margin:16px 0 0;line-height:1.05}
+.d-sub{color:var(--muted);margin:4px 0 0}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:18px 0 6px}
+.btn{border:1px solid var(--line);background:var(--surface);border-radius:14px;padding:13px 14px;font-weight:600;font-size:15.5px;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn.primary{background:var(--water);border-color:var(--water);color:#fff}
+.btn.leaf{background:var(--leaf);border-color:var(--leaf);color:var(--bg)}
+:root[data-theme="dark"] .btn.primary{color:#0E1A24}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn.primary{color:#0E1A24}}
+.btn.full{grid-column:1/-1;width:100%}
+.btn:disabled{opacity:.55;cursor:default}
+.btn.danger{color:var(--warn)}
+
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-top:12px}
+.panel h4{margin:0 0 8px;font-size:16px;font-weight:600;display:flex;align-items:center;gap:8px}
+.panel p{margin:4px 0;font-size:15.5px}
+.facts{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:15.5px;margin:0}
+.facts dt{color:var(--muted)}
+.facts dd{margin:0}
+.big-now{display:flex;align-items:center;gap:14px;margin-bottom:10px}
+.big-now .n{font-size:30px;font-weight:700;line-height:1}
+.big-now .u{color:var(--muted);font-size:14.5px}
+.status{display:inline-block;padding:3px 10px;border-radius:99px;font-size:13.5px;font-weight:600}
+.status.goed{background:var(--leaf-soft);color:var(--leaf)}
+.status.aandacht{background:var(--amber-soft);color:var(--amber)}
+.status.slecht{background:var(--warn-soft);color:var(--warn)}
+.status.onbekend{background:var(--sunk);color:var(--muted)}
+.panel ul{margin:8px 0 0;padding-left:20px}
+.panel li{margin:4px 0;font-size:15.5px}
+.warn-line{color:var(--warn);font-weight:500}
+
+/* forms */
+label.f{display:block;margin-top:14px;font-size:14.5px;color:var(--muted);font-weight:500}
+label.f input,label.f textarea,label.f select{display:block;width:100%;margin-top:5px;padding:11px 12px;border-radius:12px;border:1px solid var(--line);background:var(--surface);font-size:16px;color:var(--ink)}
+label.f textarea{min-height:76px;resize:vertical}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.check{display:flex;gap:10px;align-items:center;margin-top:16px;font-size:15.5px}
+.check input{width:20px;height:20px}
+.photo-pick{display:block;border:2px dashed var(--line);border-radius:18px;background:var(--surface);aspect-ratio:4/3;overflow:hidden;position:relative;cursor:pointer}
+.photo-pick img{width:100%;height:100%;object-fit:cover}
+.photo-pick .prompt{position:absolute;inset:0;display:grid;place-content:center;justify-items:center;gap:8px;color:var(--muted);text-align:center;padding:20px}
+.photo-pick input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.hint{font-size:14px;color:var(--muted);margin:8px 0 0}
+.thinking{display:flex;gap:10px;align-items:center;padding:14px 16px;background:var(--water-soft);color:var(--water);border-radius:14px;margin-top:14px;font-weight:500}
+.spin{width:18px;height:18px;border:2.5px solid currentColor;border-right-color:transparent;border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:3s}}
+.err{padding:12px 14px;background:var(--warn-soft);color:var(--warn);border-radius:12px;margin-top:12px;font-size:15px}
+.note{padding:12px 14px;background:var(--sunk);border-radius:12px;margin-top:12px;font-size:15px;color:var(--muted)}
+
+.toast{position:fixed;left:50%;transform:translateX(-50%);width:min(440px,calc(100% - 28px));justify-content:space-between;bottom:calc(86px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:11px 14px 11px 16px;border-radius:14px;display:flex;gap:14px;align-items:center;z-index:50;font-size:15px;max-width:calc(100% - 28px);box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.toast button{background:none;border:0;color:var(--bg);font-weight:700;text-decoration:underline;padding:4px}
+.status-line{color:var(--muted);font-size:14px;margin-top:10px}
+
+/* Plat & Plant additions */
+.brand{display:flex;align-items:center;justify-content:space-between;margin:0 0 6px}
+.wordmark{font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--leaf)}
+.wordmark .amp{font-weight:400;font-style:italic;color:var(--water)}
+.linkish{background:none;border:0;padding:0;color:var(--water);text-decoration:underline;font-size:inherit}
+.search-row{display:flex;gap:8px;align-items:flex-end}
+.search-row .btn{padding:11px 16px}
+.cands{margin-top:14px}
+.cand{display:block;width:100%;text-align:left;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-top:8px}
+.cand b{display:block;font-weight:600}
+.cand span{font-size:14px;color:var(--muted)}
+.symptoms{display:grid;gap:8px;margin-top:12px}
+.sym{display:flex;gap:12px;align-items:center;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:11px 12px;font-size:15.5px}
+.sym input{width:20px;height:20px;flex:none;accent-color:var(--leaf)}
+.sym:has(input:checked){border-color:var(--leaf);background:var(--leaf-soft)}
+.photo-pick.small{aspect-ratio:16/7;margin-top:16px}
+.file-btn{position:relative;overflow:hidden;cursor:pointer}
+.file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+</style>
+</head>
+<body>
+<main class="wrap" id="main" aria-live="polite"></main>
+<nav class="tabs" aria-label="Navigatie">
+  <div class="in">
+    <button class="tab" data-tab="today" aria-current="page">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3s-6 7-6 11a6 6 0 0 0 12 0c0-4-6-11-6-11z"/></svg>
+      Vandaag
+    </button>
+    <button class="add-fab" id="addBtn" aria-label="Plant toevoegen">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    </button>
+    <button class="tab" data-tab="plants">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 4-3 7-8 7z"/><path d="M12 15c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5z"/><path d="M7 21h10"/></svg>
+      Planten
+    </button>
+  </div>
+</nav>
+<section class="sheet" id="sheet" hidden role="dialog" aria-modal="true"></section>
+<div id="toastHost"></div>
+<script src="planten-db.js"></script>
+<script>
+(() => {
+"use strict";
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const clamp = (n, a, b) => Math.min(b, Math.max(a, n));
+const num = (v, d) => { const n = Number(v); return v !== "" && v !== null && Number.isFinite(n) ? n : d; };
+const ymd = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+const todayStr = () => ymd(new Date());
+const parseYmd = s => { const [y,m,d] = String(s).split("-").map(Number); return new Date(y, m-1, d); };
+const dayDiff = (a, b) => Math.round((parseYmd(b) - parseYmd(a)) / 86400000);
+const addDays = (s, n) => { const d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d); };
+const fmtDate = s => parseYmd(s).toLocaleDateString("nl-NL", { weekday:"short", day:"numeric", month:"short" });
+const safeImg = s => typeof s === "string" && /^data:image\/(jpeg|png|webp);base64,/.test(s) ? s : "";
+const str = v => typeof v === "string" ? v.trim().slice(0, 1200) : "";
+const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim();
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+
+const LEAF_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 4-3 7-8 7z"/><path d="M12 15c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5z"/></svg>`;
+const GEAR_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`;
+
+/* ---------- local storage (IndexedDB, only on this phone) ---------- */
+const store = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open("platplant", 1);
+      r.onupgradeneeded = () => { r.result.createObjectStore("plants", { keyPath: "id" }); r.result.createObjectStore("settings"); };
+      r.onsuccess = () => { this.db = r.result; res(); };
+      r.onerror = () => rej(r.error);
+    });
+  },
+  req(name, mode, fn) {
+    return new Promise((res, rej) => {
+      const t = this.db.transaction(name, mode);
+      const q = fn(t.objectStore(name));
+      t.oncomplete = () => res(q?.result);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  },
+  all() { return this.req("plants", "readonly", s => s.getAll()); },
+  put(p) { return this.req("plants", "readwrite", s => s.put(p)); },
+  del(id) { return this.req("plants", "readwrite", s => s.delete(id)); },
+  clear() { return this.req("plants", "readwrite", s => s.clear()); },
+  get(k) { return this.req("settings", "readonly", s => s.get(k)); },
+  set(k, v) { return this.req("settings", "readwrite", s => s.put(v, k)); }
+};
+
+/* ---------- seasons ---------- */
+function season(d = new Date()) {
+  const m = d.getMonth() + 1;
+  if (m >= 4 && m <= 9) return "groei";
+  if (m === 3 || m === 10) return "overgang";
+  return "rust";
+}
+const SEASON_TEXT = {
+  groei: ["Groeiseizoen", "April tot en met september. Planten groeien en krijgen vaker water en voeding."],
+  overgang: ["Overgangsmaand", "Planten krijgen water in een ritme tussen zomer en winter in. Geen voeding."],
+  rust: ["Rustperiode", "November tot en met februari. Minder vaak water geven en geen voeding."]
+};
+function intervalFor(p, s = season()) {
+  const g = clamp(num(p.waterGroeiDagen, 7), 1, 60);
+  const r = clamp(num(p.waterRustDagen, g * 2), 1, 90);
+  if (s === "groei") return g;
+  if (s === "rust") return r;
+  return Math.round((g + r) / 2);
+}
+function amountFor(p, s = season()) {
+  const ml = clamp(num(p.waterMl, 200), 10, 5000);
+  return s === "rust" ? Math.max(10, Math.round(ml * 0.8 / 10) * 10) : ml;
+}
+function waterStatus(p) {
+  const iv = intervalFor(p), t = todayStr();
+  if (!p.lastWatered) return { daysLeft: 0, iv, next: t, never: true };
+  const next = addDays(p.lastWatered, iv);
+  return { daysLeft: dayDiff(t, next), iv, next };
+}
+function feedStatus(p) {
+  const w = num(p.voedingWeken, 0);
+  if (!w || season() !== "groei") return null;
+  if (!p.lastFed) return { due: true, daysLeft: 0 };
+  const left = dayDiff(todayStr(), addDays(p.lastFed, w * 7));
+  return { due: left <= 0, daysLeft: left };
+}
+function whenText(st) {
+  if (st.never) return "Vandaag";
+  if (st.daysLeft < -1) return `${-st.daysLeft} dagen te laat`;
+  if (st.daysLeft === -1) return "Gisteren al";
+  if (st.daysLeft === 0) return "Vandaag";
+  if (st.daysLeft === 1) return "Morgen";
+  return `Over ${st.daysLeft} dagen`;
+}
+
+/* The signature element: a drop that drains as the next watering approaches */
+let gid = 0;
+function gauge(st, size = 20) {
+  const level = st.never ? 0 : clamp(st.daysLeft / st.iv, 0, 1);
+  const id = "g" + (++gid);
+  const color = st.daysLeft < 0 ? "var(--warn)" : "var(--water)";
+  const h = 30 * level;
+  return `<svg width="${size}" height="${Math.round(size*1.33)}" viewBox="0 0 24 32" aria-hidden="true">
+    <defs><clipPath id="${id}"><path d="M12 1C12 1 2 13 2 21a10 10 0 0 0 20 0C22 13 12 1 12 1Z"/></clipPath></defs>
+    <rect x="0" y="${31 - h}" width="24" height="${h + 1}" fill="${color}" clip-path="url(#${id})"/>
+    <path d="M12 1C12 1 2 13 2 21a10 10 0 0 0 20 0C22 13 12 1 12 1Z" fill="none" stroke="${color}" stroke-width="2"/>
+  </svg>`;
+}
+
+/* ---------- plant knowledge ---------- */
+const DB = window.PLANTEN_DB || [];
+function findBySci(species, genus, family) {
+  const s = norm(species), g = norm(genus), f = norm(family);
+  return (s && DB.find(e => e.k.some(k => k.includes(" ") && (s === k || s.startsWith(k + " ")))))
+      || (g && DB.find(e => e.k.includes(g)))
+      || (f && DB.find(e => e.k.includes(f)))
+      || null;
+}
+function findByName(q) {
+  const n = norm(q);
+  if (!n) return [];
+  const scored = [];
+  DB.forEach(e => {
+    const words = [...e.a, ...e.k, norm(e.n)].map(norm);
+    let score = 0;
+    if (words.includes(n)) score = 3;
+    else if (words.some(w => w.startsWith(n) || n.startsWith(w))) score = 2;
+    else if (n.length >= 4 && words.some(w => w.includes(n) || (w.length >= 4 && n.includes(w)))) score = 1;
+    if (score) scored.push({ e, score });
+  });
+  return scored.sort((a, b) => b.score - a.score).slice(0, 5).map(x => x.e);
+}
+function scaleMl(base, pot) {
+  const p = clamp(num(pot, 14), 5, 80);
+  return clamp(Math.round(base * Math.pow(p / 14, 2) / 10) * 10, 20, 4000);
+}
+function dataFromEntry(e, ctx, extra = {}) {
+  return {
+    label: ctx.label || e.n, naam: e.n, soort: extra.soort || "", kamer: ctx.room, pot: ctx.pot ? num(ctx.pot, null) : null,
+    waterGroeiDagen: e.g, waterRustDagen: e.r, waterMl: scaleMl(e.ml, ctx.pot), waterTip: e.wt,
+    voedingWeken: e.v, voedingTip: e.vt, licht: e.l, vochtigheid: e.h, giftig: e.t, verzorging: e.c,
+    over: extra.over || "", bron: extra.bron || ""
+  };
+}
+function genericData(ctx, extra = {}) {
+  return {
+    label: ctx.label || extra.naam || "", naam: extra.naam || ctx.name || "", soort: extra.soort || "", kamer: ctx.room,
+    pot: ctx.pot ? num(ctx.pot, null) : null,
+    waterGroeiDagen: 7, waterRustDagen: 14, waterMl: scaleMl(200, ctx.pot),
+    waterTip: "Geef water als de bovenste 2 tot 3 cm van de grond droog aanvoelt.",
+    voedingWeken: 4, voedingTip: "Groene-plantenvoeding volgens de verpakking.",
+    licht: "", vochtigheid: "", giftig: false, verzorging: "", over: extra.over || "", bron: extra.bron || ""
+  };
+}
+
+/* ---------- online lookups ---------- */
+async function wikiLookup(q, signal) {
+  const s = await fetch(`https://nl.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(q)}&srlimit=1&format=json&origin=*`, { signal }).then(r => r.json());
+  const title = s?.query?.search?.[0]?.title;
+  if (!title) return null;
+  const sum = await fetch(`https://nl.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title.replace(/ /g, "_"))}`, { signal }).then(r => r.ok ? r.json() : null);
+  if (!sum?.extract) return null;
+  return { title, text: str(sum.extract).slice(0, 700) };
+}
+async function plantnetIdentify(blob, key, signal) {
+  const fd = new FormData();
+  fd.append("images", blob, "plant.jpg");
+  fd.append("organs", "auto");
+  let r;
+  try {
+    r = await fetch(`https://my-api.plantnet.org/v2/identify/all?api-key=${encodeURIComponent(key)}&lang=nl&nb-results=4&include-related-images=false`, { method: "POST", body: fd, signal });
+  } catch (e) {
+    if (e.name === "AbortError") throw e;
+    throw { msg: "Pl@ntNet is niet bereikbaar. Controleer je internet, en of het webadres van deze app bij Pl@ntNet bij Authorized domains staat." };
+  }
+  if (r.status === 404) return [];
+  if (r.status === 401 || r.status === 403) throw { msg: "De Pl@ntNet-sleutel klopt niet of is niet vrijgegeven voor dit webadres. Controleer de instellingen." };
+  if (r.status === 429) throw { msg: "Het dagelijkse maximum van Pl@ntNet is bereikt. Probeer het morgen opnieuw." };
+  if (!r.ok) throw { msg: "Pl@ntNet kon de foto niet verwerken. Probeer een scherpere foto met de bladeren goed in beeld." };
+  const j = await r.json();
+  return (j.results || []).map(x => ({
+    score: x.score,
+    species: x.species?.scientificNameWithoutAuthor || "",
+    genus: x.species?.genus?.scientificNameWithoutAuthor || "",
+    family: x.species?.family?.scientificNameWithoutAuthor || "",
+    common: (x.species?.commonNames || [])[0] || ""
+  })).filter(x => x.species);
+}
+
+/* ---------- state ---------- */
+const state = { plants: [], tab: "today", loaded: false, key: "" };
+const byId = id => state.plants.find(p => p.id === id);
+
+/* ---------- rendering ---------- */
+function thumb(p, cls = "thumb") {
+  const src = safeImg(p.foto);
+  return src ? `<img class="${cls}" src="${src}" alt="">` : `<div class="${cls} ph">${LEAF_SVG}</div>`;
+}
+function brandBar() {
+  return `<div class="brand"><span class="wordmark">Plat <span class="amp">&amp;</span> Plant</span><button class="icon-btn" data-settings aria-label="Instellingen">${GEAR_SVG}</button></div>`;
+}
+function render() {
+  document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === state.tab ? "page" : "false"));
+  const main = $("#main");
+  if (!state.loaded) { main.innerHTML = brandBar() + `<p class="status-line">Planten laden…</p>`; return; }
+  main.innerHTML = brandBar() + (state.tab === "today" ? todayView() : plantsView());
+}
+function seasonBlock() {
+  const [t, d] = SEASON_TEXT[season()];
+  return `<div class="season">${LEAF_SVG.replace('width="28" height="28"','width="22" height="22"')}<div><b>${t}</b><p>${d}</p></div></div>`;
+}
+function todayView() {
+  const dateStr = new Date().toLocaleDateString("nl-NL", { weekday:"long", day:"numeric", month:"long" });
+  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p></header>${seasonBlock()}`;
+  if (!state.plants.length) {
+    return html + `<div class="empty">${LEAF_SVG}<h2 style="margin:8px 0 0">Nog geen planten</h2><p>Maak een foto van jullie eerste plant en geef hem een label. De app zoekt op hoeveel water hij nodig heeft.</p><button class="btn leaf" style="margin:0 auto" data-act="add">Eerste plant toevoegen</button></div>`;
+  }
+  const items = state.plants.map(p => ({ p, st: waterStatus(p), fd: feedStatus(p) }));
+  const due = items.filter(i => i.st.daysLeft <= 0).sort((a,b) => a.st.daysLeft - b.st.daysLeft);
+  const soon = items.filter(i => i.st.daysLeft > 0).sort((a,b) => a.st.daysLeft - b.st.daysLeft);
+  const feedOnly = soon.filter(i => i.fd?.due);
+  html += `<h2>Water geven <span class="count">${due.length || ""}</span></h2>`;
+  html += due.length ? due.map(rowDue).join("") : `<div class="allgood">${gauge({daysLeft:1,iv:1},18)} Alle planten hebben genoeg water.</div>`;
+  if (feedOnly.length) html += `<h2>Voeding geven</h2>` + feedOnly.map(rowFeed).join("");
+  if (soon.length) html += `<h2>Binnenkort</h2>` + soon.map(rowSoon).join("");
+  return html;
+}
+function rowDue({ p, st, fd }) {
+  const cls = st.daysLeft < 0 ? "late" : "due";
+  return `<div class="row ${cls}">
+    ${thumb(p)}
+    <button class="info" data-open="${esc(p.id)}">
+      <div class="name">${esc(p.label)}</div>
+      <div class="meta">${esc(p.kamer || p.naam || "")}</div>
+      <div class="when ${cls}">${gauge(st,14)} ${whenText(st)}${fd?.due ? '<span class="chip">+ voeding</span>' : ""}</div>
+    </button>
+    <button class="water-btn" data-water="${esc(p.id)}" aria-label="${esc(p.label)}: water gegeven">${amountFor(p)} ml<small>Gegeven</small></button>
+  </div>`;
+}
+function rowFeed({ p }) {
+  return `<div class="row">${thumb(p)}
+    <button class="info" data-open="${esc(p.id)}"><div class="name">${esc(p.label)}</div><div class="meta">${esc(p.voedingTip || "Plantenvoeding volgens de verpakking")}</div></button>
+    <button class="ghost-btn" data-feed="${esc(p.id)}">Gevoed</button></div>`;
+}
+function rowSoon({ p, st }) {
+  return `<div class="row">${thumb(p)}
+    <button class="info" data-open="${esc(p.id)}"><div class="name">${esc(p.label)}</div><div class="when">${gauge(st,14)} ${whenText(st)}, ${amountFor(p)} ml</div></button></div>`;
+}
+function plantsView() {
+  let html = `<header class="top"><h1>Planten</h1><p class="date">${state.plants.length} ${state.plants.length === 1 ? "plant" : "planten"} in huis</p></header>`;
+  if (!state.plants.length) return html + `<div class="empty">${LEAF_SVG}<p>Hier komen jullie planten, gesorteerd per kamer.</p><button class="btn leaf" style="margin:0 auto" data-act="add">Plant toevoegen</button></div>`;
+  const rooms = {};
+  state.plants.forEach(p => { const r = (p.kamer || "").trim() || "Zonder kamer"; (rooms[r] ||= []).push(p); });
+  Object.keys(rooms).sort((a,b) => a === "Zonder kamer" ? 1 : b === "Zonder kamer" ? -1 : a.localeCompare(b, "nl")).forEach(r => {
+    html += `<section class="room"><h2>${esc(r)}</h2><div class="grid">` +
+      rooms[r].sort((a,b) => a.label.localeCompare(b.label, "nl")).map(p => {
+        const st = waterStatus(p), src = safeImg(p.foto);
+        return `<button class="tile" data-open="${esc(p.id)}" aria-label="${esc(p.label)}">
+          ${src ? `<img src="${src}" alt="">` : `<div class="ph">${LEAF_SVG}</div>`}
+          <span class="gauge">${gauge(st,14)}</span>
+          <span class="lbl"><b>${esc(p.label)}</b><span>${whenText(st)}</span></span></button>`;
+      }).join("") + `</div></section>`;
+  });
+  return html;
+}
+
+/* ---------- sheet ---------- */
+const sheet = $("#sheet");
+let sheetCtx = null, abortCtl = null;
+function openSheet(ctx) { abortCtl?.abort(); sheetCtx = ctx; renderSheet(); sheet.hidden = false; sheet.scrollTop = 0; document.body.style.overflow = "hidden"; setTimeout(() => sheet.querySelector(".icon-btn")?.focus(), 30); }
+function closeSheet() { abortCtl?.abort(); sheetCtx = null; sheet.hidden = true; sheet.innerHTML = ""; document.body.style.overflow = ""; }
+function head(title, back = "close") {
+  return `<div class="sheet-head"><button class="icon-btn" data-sheet="${back}" aria-label="Terug"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg></button><h3>${esc(title)}</h3></div>`;
+}
+function renderSheet() {
+  if (!sheetCtx) return;
+  const c = sheetCtx;
+  if (c.mode === "detail") {
+    const p = byId(c.id); if (!p) { closeSheet(); return; }
+    sheet.innerHTML = head(p.label) + `<div class="body">${detailBody(p)}</div>`;
+  } else if (c.mode === "add") {
+    sheet.innerHTML = head("Plant toevoegen") + `<div class="body">${addBody()}</div>`;
+  } else if (c.mode === "form") {
+    sheet.innerHTML = head(c.editId ? "Plant bewerken" : "Gegevens controleren", c.editId ? "detail" : "add") + `<div class="body">${formBody()}</div>`;
+  } else if (c.mode === "health") {
+    sheet.innerHTML = head("Gezondheidscheck", "detail") + `<div class="body">${healthBody(byId(c.id))}</div>`;
+  } else if (c.mode === "settings") {
+    sheet.innerHTML = head("Instellingen") + `<div class="body">${settingsBody()}</div>`;
+  }
+}
+const statusKey = s => ["goed","aandacht","slecht"].includes(s) ? s : "onbekend";
+const statusLabel = s => ({goed:"Gezond", aandacht:"Aandacht nodig", slecht:"Gaat niet goed"}[s] || "Onbekend");
+
+function detailBody(p) {
+  const st = waterStatus(p), fd = feedStatus(p), s = season(), src = safeImg(p.foto), h = p.gezondheid, fw = num(p.voedingWeken, 0);
+  return `
+  <div class="hero">${src ? `<img src="${src}" alt="Foto van ${esc(p.label)}">` : `<div class="ph">${LEAF_SVG}</div>`}</div>
+  <h1 class="d-title">${esc(p.label)}</h1>
+  <p class="d-sub">${esc([p.naam, p.soort, p.kamer].filter(Boolean).join(", "))}</p>
+  <div class="actions">
+    <button class="btn primary" data-water="${esc(p.id)}">${gauge(st,14)} Water gegeven</button>
+    <button class="btn" data-health="${esc(p.id)}">Gezondheidscheck</button>
+  </div>
+  <div class="panel">
+    <h4>Water</h4>
+    <div class="big-now">${gauge(st,30)}<div><div class="n">${amountFor(p)} ml</div><div class="u">elke ${st.iv} dagen in deze periode</div></div></div>
+    <dl class="facts">
+      <dt>Volgende keer</dt><dd class="${st.daysLeft < 0 ? "warn-line" : ""}">${whenText(st)}${st.never ? "" : " (" + esc(fmtDate(st.next)) + ")"}</dd>
+      <dt>Laatst gegeven</dt><dd>${p.lastWatered ? esc(fmtDate(p.lastWatered)) : "Nog niet"}</dd>
+      <dt>Zomer / winter</dt><dd>elke ${num(p.waterGroeiDagen,7)} / ${num(p.waterRustDagen,14)} dagen</dd>
+    </dl>
+    ${p.waterTip ? `<p class="hint">${esc(p.waterTip)}</p>` : ""}
+  </div>
+  <div class="panel">
+    <h4>Voeding</h4>
+    ${fw ? `<p>Elke ${fw} weken, van april tot en met september.</p>` : `<p>Deze plant heeft weinig tot geen voeding nodig.</p>`}
+    ${fw && s !== "groei" ? `<p class="hint">Nu niet nodig: de plant groeit nauwelijks buiten het groeiseizoen.</p>` : ""}
+    ${fd ? `<p class="${fd.due ? "warn-line" : ""}">${fd.due ? "Voeding is nu aan de beurt." : `Volgende voeding over ${fd.daysLeft} dagen.`}</p>` : ""}
+    ${p.voedingTip ? `<p class="hint">${esc(p.voedingTip)}</p>` : ""}
+    ${fw && s === "groei" ? `<button class="btn" style="margin-top:10px" data-feed="${esc(p.id)}">Voeding gegeven</button>` : ""}
+    ${p.lastFed ? `<p class="hint">Laatst gevoed: ${esc(fmtDate(p.lastFed))}</p>` : ""}
+  </div>
+  <div class="panel">
+    <h4>Gezondheid ${h ? `<span class="status ${esc(statusKey(h.status))}">${esc(statusLabel(h.status))}</span>` : ""}</h4>
+    ${h ? `<p>${esc(h.samenvatting)}</p>${(h.suggesties||[]).length ? `<ul>${h.suggesties.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}<p class="hint">Gecheckt op ${esc(fmtDate(h.datum))}</p>`
+       : `<p class="hint">Ziet de plant er niet goed uit? Doe een gezondheidscheck.</p>`}
+  </div>
+  <div class="panel">
+    <h4>Verzorging</h4>
+    <dl class="facts">
+      ${p.licht ? `<dt>Licht</dt><dd>${esc(p.licht)}</dd>` : ""}
+      ${p.vochtigheid ? `<dt>Luchtvochtigheid</dt><dd>${esc(p.vochtigheid)}</dd>` : ""}
+      ${p.pot ? `<dt>Pot</dt><dd>${esc(p.pot)} cm</dd>` : ""}
+      ${p.giftig ? `<dt>Let op</dt><dd class="warn-line">Giftig voor huisdieren</dd>` : ""}
+    </dl>
+    ${p.verzorging ? `<p style="margin-top:10px">${esc(p.verzorging)}</p>` : ""}
+    ${p.over ? `<p class="hint" style="margin-top:10px">${esc(p.over)}${p.bron ? ` (bron: ${esc(p.bron)})` : ""}</p>` : ""}
+  </div>
+  <div class="actions">
+    <button class="btn" data-edit="${esc(p.id)}">Bewerken</button>
+    <button class="btn danger" data-del="${esc(p.id)}">Verwijderen</button>
+  </div>`;
+}
+
+/* --- add flow --- */
+function addBody() {
+  const c = sheetCtx, hasKey = !!state.key;
+  const cands = c.cands || [];
+  return `
+  <label class="photo-pick" aria-label="Foto maken of kiezen">
+    ${c.preview ? `<img src="${c.preview}" alt="Gekozen foto">` : `<span class="prompt">${LEAF_SVG}<b>Maak een foto van de plant</b><span style="font-size:14px">De hele plant, met de bladeren goed in beeld</span></span>`}
+    <input type="file" accept="image/*" id="photoIn">
+  </label>
+  <label class="f">Label (zo herkennen jullie hem)<input id="aLabel" value="${esc(c.label||"")}" placeholder="Bijv. Grote monstera bij de bank" autocomplete="off"></label>
+  <div class="two">
+    <label class="f">Kamer<input id="aRoom" value="${esc(c.room||"")}" placeholder="Woonkamer" list="roomList" autocomplete="off"></label>
+    <label class="f">Potdiameter (cm)<input id="aPot" inputmode="numeric" value="${esc(c.pot||"")}" placeholder="14"></label>
+  </div>
+  <datalist id="roomList">${rooms().map(r => `<option value="${esc(r)}">`).join("")}</datalist>
+
+  <h2 style="margin-top:26px">Welke plant is het?</h2>
+  ${hasKey ? `<button class="btn leaf full" data-identify ${c.blob && !c.busy ? "" : "disabled"}>Herken via de foto</button>
+     ${!c.blob ? `<p class="hint">Maak eerst een foto.</p>` : ""}`
+   : `<p class="hint">Herkennen via een foto kan als je een gratis Pl@ntNet-sleutel invult bij <button class="linkish" data-settings>Instellingen</button>. Je kunt ook de naam typen.</p>`}
+  <div class="search-row">
+    <label class="f" style="flex:1;margin-top:12px">Of typ de naam<input id="aName" value="${esc(c.name||"")}" placeholder="Bijv. monstera, vrouwentong" list="dbList" autocomplete="off" enterkeyhint="search"></label>
+    <button class="btn" data-namesearch ${c.busy ? "disabled" : ""}>Zoek</button>
+  </div>
+  <datalist id="dbList">${DB.map(e => `<option value="${esc(e.n)}">`).join("")}</datalist>
+  ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div><button class="btn full" style="margin-top:10px" data-stop>Stoppen</button>` : ""}
+  ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
+  ${cands.length ? `<div class="cands"><p class="hint" style="margin-bottom:6px">${esc(c.candNote || "Kies de plant die het best past:")}</p>${cands.map((x, i) => `<button class="cand" data-cand="${i}"><b>${esc(x.title)}</b><span>${esc(x.sub || "")}</span></button>`).join("")}</div>` : ""}
+  <button class="btn full" style="margin-top:16px" data-manual>Zelf invullen</button>`;
+}
+const rooms = () => [...new Set(state.plants.map(p => p.kamer).filter(Boolean))];
+function readAddInputs() {
+  const c = sheetCtx;
+  ["label:aLabel", "name:aName", "room:aRoom", "pot:aPot"].forEach(x => { const [k, id] = x.split(":"); const el = $("#" + id); if (el) c[k] = el.value.trim(); });
+}
+
+async function identifyPhoto() {
+  readAddInputs();
+  const c = sheetCtx;
+  c.busy = "De foto wordt naar Pl@ntNet gestuurd…"; c.error = ""; c.cands = []; renderSheet();
+  abortCtl = new AbortController();
+  try {
+    const res = await plantnetIdentify(c.blob, state.key, abortCtl.signal);
+    c.busy = "";
+    if (!res.length) { c.error = "Pl@ntNet herkent deze plant niet. Probeer een foto van dichtbij met de bladeren goed zichtbaar, of typ de naam."; renderSheet(); return; }
+    c.cands = res.map(r => {
+      const e = findBySci(r.species, r.genus, r.family);
+      return { kind: "pn", r, e, title: e ? e.n : (r.common ? cap(r.common) : r.species), sub: `${r.species}, ${Math.round(r.score * 100)}% zeker${e ? "" : ", info via Wikipedia"}` };
+    });
+    c.candNote = res[0].score < 0.3 ? "Pl@ntNet twijfelt. Kies de plant die het best past:" : "Kies de plant die het best past:";
+    renderSheet();
+  } catch (e) {
+    if (e?.name === "AbortError") return;
+    c.busy = ""; c.error = e?.msg || "Herkennen lukte niet. Probeer het opnieuw of typ de naam."; renderSheet();
+  }
+}
+const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
+
+function nameSearch() {
+  readAddInputs();
+  const c = sheetCtx;
+  c.error = "";
+  if (!c.name) { c.error = "Typ eerst een naam."; renderSheet(); return; }
+  const hits = findByName(c.name);
+  c.cands = hits.map(e => ({ kind: "db", e, title: e.n, sub: "Uit de ingebouwde plantenlijst" }));
+  c.cands.push({ kind: "wiki", q: c.name, title: `Zoek “${c.name}” online op`, sub: "Via Wikipedia, met standaard water-advies" });
+  c.candNote = hits.length ? "Kies de plant die het best past:" : "Deze plant staat niet in de ingebouwde lijst.";
+  renderSheet();
+}
+
+async function chooseCand(i) {
+  readAddInputs();
+  const c = sheetCtx, x = c.cands?.[i];
+  if (!x) return;
+  if (x.e && x.kind === "db") { goForm(dataFromEntry(x.e, c), ""); return; }
+  if (x.e && x.kind === "pn") { goForm(dataFromEntry(x.e, c, { soort: x.r.species, bron: "Pl@ntNet" }), ""); return; }
+  // Unknown: look it up online
+  const q = x.kind === "pn" ? x.r.species : x.q;
+  c.busy = "Informatie opzoeken op Wikipedia…"; c.error = ""; renderSheet();
+  abortCtl = new AbortController();
+  let w = null;
+  try { w = await wikiLookup(q, abortCtl.signal); } catch (e) { if (e?.name === "AbortError") return; }
+  c.busy = "";
+  const extra = { naam: x.kind === "pn" ? (x.r.common ? cap(x.r.common) : x.r.species) : cap(x.q), soort: x.kind === "pn" ? x.r.species : "", over: w?.text || "", bron: w ? "Wikipedia" : "" };
+  goForm(genericData(c, extra), w ? "Deze plant staat niet in de ingebouwde lijst. Het water-advies is een veilige standaard: pas het aan als je meer weet, bijvoorbeeld van het etiket." : "Er is online geen informatie gevonden. Vul het advies zelf in, bijvoorbeeld van het etiket in de pot.");
+}
+function goForm(data, note) {
+  const c = sheetCtx;
+  sheetCtx = { mode: "form", data, note, photo: c.photo || null, addCtx: c };
+  renderSheet(); sheet.scrollTop = 0;
+}
+
+/* --- form --- */
+function formBody() {
+  const d = sheetCtx.data;
+  const f = (id, label, val, attrs = "") => `<label class="f">${label}<input id="${id}" value="${esc(val ?? "")}" ${attrs}></label>`;
+  return `
+  ${sheetCtx.note ? `<div class="note">${esc(sheetCtx.note)}</div>` : ""}
+  ${!sheetCtx.editId && !sheetCtx.note ? `<div class="note">Gegevens ingevuld. Controleer ze en pas aan wat niet klopt.</div>` : ""}
+  ${f("fLabel","Label",d.label,'autocomplete="off"')}
+  <div class="two">${f("fNaam","Naam",d.naam)}${f("fSoort","Wetenschappelijke naam",d.soort)}</div>
+  <div class="two">${f("fKamer","Kamer",d.kamer,'list="roomList2"')}${f("fPot","Potdiameter (cm)",d.pot,'inputmode="numeric"')}</div>
+  <datalist id="roomList2">${rooms().map(r => `<option value="${esc(r)}">`).join("")}</datalist>
+  <div class="two">${f("fGroei","Water elke … dagen (zomer)",d.waterGroeiDagen,'inputmode="numeric"')}${f("fRust","Water elke … dagen (winter)",d.waterRustDagen,'inputmode="numeric"')}</div>
+  ${f("fMl","Hoeveelheid per keer (ml)",d.waterMl,'inputmode="numeric"')}
+  <label class="f">Tip voor water geven<textarea id="fWaterTip">${esc(d.waterTip)}</textarea></label>
+  ${f("fVoeding","Voeding elke … weken (0 = geen)",d.voedingWeken,'inputmode="numeric"')}
+  <label class="f">Tip voor voeding<textarea id="fVoedingTip">${esc(d.voedingTip)}</textarea></label>
+  ${f("fLicht","Licht",d.licht)}
+  ${f("fVocht","Luchtvochtigheid",d.vochtigheid)}
+  <label class="f">Verzorging<textarea id="fVerz">${esc(d.verzorging)}</textarea></label>
+  <label class="check"><input type="checkbox" id="fGiftig" ${d.giftig ? "checked" : ""}> Giftig voor huisdieren</label>
+  ${d.over ? `<div class="panel"><h4>Over deze plant</h4><p class="hint" style="margin:0">${esc(d.over)}</p></div>` : ""}
+  ${sheetCtx.error ? `<div class="err">${esc(sheetCtx.error)}</div>` : ""}
+  <div class="actions"><button class="btn leaf full" data-save>Plant opslaan</button></div>`;
+}
+function readForm() {
+  const v = id => $("#" + id)?.value.trim() ?? "";
+  const n = (id, def, lo, hi) => { const x = parseInt(v(id), 10); return Number.isFinite(x) ? clamp(x, lo, hi) : def; };
+  const groei = n("fGroei", 7, 1, 60);
+  return {
+    label: v("fLabel") || v("fNaam") || "Plant",
+    naam: v("fNaam"), soort: v("fSoort"), kamer: v("fKamer"),
+    pot: v("fPot") ? n("fPot", null, 3, 150) : null,
+    waterGroeiDagen: groei, waterRustDagen: n("fRust", groei * 2, 1, 90),
+    waterMl: n("fMl", 200, 10, 5000), waterTip: v("fWaterTip"),
+    voedingWeken: n("fVoeding", 0, 0, 26), voedingTip: v("fVoedingTip"),
+    licht: v("fLicht"), vochtigheid: v("fVocht"), verzorging: v("fVerz"),
+    giftig: !!$("#fGiftig")?.checked
+  };
+}
+
+/* --- health check (rule based, no AI) --- */
+const SYMPTOMS = [
+  ["geel", "Bladeren worden geel"],
+  ["slap", "Bladeren hangen slap"],
+  ["bruinrand", "Bruine, droge randen of punten"],
+  ["vlekken", "Bruine of lichte vlekken op het blad"],
+  ["krul", "Bladeren krullen of rimpelen"],
+  ["bladval", "Er vallen veel bladeren af"],
+  ["lang", "Lange, dunne stengels of bleke nieuwe bladeren"],
+  ["groeitniet", "Groeit nauwelijks"],
+  ["zacht", "Stengel of voet is zacht, bruin of zwart"],
+  ["beestjes", "Beestjes, webjes of kleverige bladeren"],
+  ["schimmel", "Wit pluis of kleine vliegjes op de grond"]
+];
+function healthBody(p) {
+  if (!p) return "";
+  const c = sheetCtx, sel = c.sel || {};
+  return `
+  <p style="margin-top:4px">Wat zie je bij ${esc(p.label)}? Vink alles aan wat klopt.</p>
+  <div class="symptoms">${SYMPTOMS.map(([id, l]) => `<label class="sym"><input type="checkbox" data-sym="${id}" ${sel[id] ? "checked" : ""}><span>${l}</span></label>`).join("")}</div>
+  <label class="f">Hoe voelt de grond 3 cm diep?
+    <select id="hGrond">
+      ${[["", "Weet ik niet"], ["nat", "Nat"], ["vochtig", "Een beetje vochtig"], ["droog", "Droog"]].map(([v, l]) => `<option value="${v}" ${c.grond === v ? "selected" : ""}>${l}</option>`).join("")}
+    </select></label>
+  <label class="photo-pick small" aria-label="Nieuwe foto maken (optioneel)">
+    ${c.preview ? `<img src="${c.preview}" alt="Nieuwe foto">` : `<span class="prompt">${LEAF_SVG}<b>Nieuwe foto (optioneel)</b><span style="font-size:14px">Handig om later te vergelijken</span></span>`}
+    <input type="file" accept="image/*" id="photoIn">
+  </label>
+  ${c.result ? `<div class="panel" id="hResult"><h4>Advies <span class="status ${esc(statusKey(c.result.status))}">${esc(statusLabel(c.result.status))}</span></h4><p>${esc(c.result.samenvatting)}</p>${c.result.suggesties.length ? `<ul>${c.result.suggesties.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+      ${c.result.ritme ? `<button class="btn full" style="margin-top:10px" data-ritme>Water voortaan elke ${c.result.ritme.nieuw} dagen in plaats van ${c.result.ritme.oud} (${c.result.ritme.veld === "waterGroeiDagen" ? "zomer" : "winter"})</button>` : ""}</div>
+    <div class="actions"><button class="btn leaf full" data-health-save>Opslaan bij de plant</button></div>`
+  : `<div class="actions"><button class="btn primary full" data-health-run>Advies tonen</button></div>`}`;
+}
+function readHealthInputs() {
+  const c = sheetCtx; c.sel = {};
+  document.querySelectorAll("[data-sym]").forEach(el => { if (el.checked) c.sel[el.dataset.sym] = true; });
+  c.grond = $("#hGrond")?.value || "";
+}
+function diagnose(p, sel, grond) {
+  const s = season(), iv = intervalFor(p), sug = [], dx = [];
+  const any = Object.keys(sel).length;
+  if (!any) return { status: "goed", samenvatting: "Geen klachten aangevinkt. Ga zo door.", suggesties: [], datum: todayStr() };
+  const has = k => !!sel[k];
+  let ritme = null, status = "aandacht";
+  const seasonField = s === "groei" ? "waterGroeiDagen" : "waterRustDagen";
+
+  if (has("zacht")) {
+    status = "slecht"; dx.push("Waarschijnlijk wortelrot door te veel water.");
+    sug.push("Haal de plant uit de pot en bekijk de wortels. Knip bruine, zachte wortels weg en verpot in verse, droge potgrond in een pot met gaten in de bodem.");
+    sug.push("Geef na het verpotten een week geen water.");
+  }
+  if (has("beestjes")) {
+    status = "slecht"; dx.push("Er zit waarschijnlijk ongedierte op, zoals spint, wolluis of trips.");
+    sug.push("Zet de plant apart van de andere planten.");
+    sug.push("Spoel de bladeren af onder de douche en veeg ook de onderkant schoon. Herhaal dit een paar weken lang elke week.");
+    sug.push("Helpt dat niet, gebruik dan een middel op basis van groene zeep of neemolie uit het tuincentrum.");
+  }
+  const teNat = grond === "nat" && (has("geel") || has("slap") || has("schimmel") || has("bladval") || has("zacht"));
+  const teDroog = grond === "droog" && (has("slap") || has("krul") || has("bruinrand") || has("geel"));
+  if (teNat || (has("schimmel") && grond !== "droog")) {
+    dx.push("De plant krijgt waarschijnlijk te veel water.");
+    sug.push("Sla de volgende beurt over en laat de bovenste 3 cm van de grond opdrogen.");
+    sug.push("Giet water weg dat in de sierpot of op het schoteltje blijft staan.");
+    const oud = num(p[seasonField], iv);
+    ritme = { veld: seasonField, oud, nieuw: Math.min(60, Math.max(oud + 1, Math.round(oud * 1.3))) };
+    if (ritme.nieuw === oud) ritme = null;
+  } else if (teDroog) {
+    dx.push("De plant heeft waarschijnlijk dorst.");
+    sug.push(`Geef nu grondig water: zet de pot een kwartier in een bak water en laat hem goed uitlekken.`);
+    const oud = num(p[seasonField], iv);
+    if (oud > 2) ritme = { veld: seasonField, oud, nieuw: Math.max(1, Math.round(oud * 0.75)) };
+  }
+  if (has("bruinrand") && !teDroog) {
+    dx.push("Bruine randen komen meestal door droge lucht of kalk in het kraanwater.");
+    sug.push("Zet de plant niet vlak bij de verwarming en gebruik regenwater of water dat een nacht heeft gestaan.");
+    if (s !== "groei") sug.push("In de winter is de lucht binnen extra droog. Een schaal water bij de plant of planten bij elkaar zetten helpt.");
+  }
+  if (has("vlekken")) {
+    dx.push("Vlekken aan de kant van het raam zijn vaak verbranding door felle zon.");
+    sug.push("Zet de plant iets verder van het raam of achter een vitrage. Zitten de vlekken overal met een gele rand, kijk dan of de grond niet te nat is.");
+  }
+  if (has("lang")) {
+    dx.push("De plant krijgt te weinig licht.");
+    sug.push(s === "groei" ? "Zet de plant dichter bij een raam." : "Zet de plant dichter bij een raam. In de winter is het binnen overal donkerder; een groeilamp kan helpen.");
+  }
+  if (has("bladval")) {
+    dx.push("Bladval komt vaak door een nieuwe plek, tocht of kou.");
+    sug.push("Laat de plant op een vaste, lichte plek staan, uit de tocht en niet tegen een koud raam.");
+  }
+  if (has("krul") && !teDroog && grond !== "nat") {
+    sug.push("Krullende bladeren kunnen ook komen door felle zon, droge lucht of ongedierte. Kijk goed aan de onderkant van de bladeren.");
+  }
+  if (has("geel") && !teNat && !teDroog) {
+    dx.push("Een geel blad onderaan is af en toe normaal: de plant ruimt oude bladeren op.");
+    if (!grond) sug.push("Voel met je vinger 3 cm diep in de grond. Nat wijst op te veel water, droog op te weinig.");
+  }
+  if (has("groeitniet") || (has("geel") && !teNat && !teDroog)) {
+    if (s !== "groei") {
+      dx.push("Buiten het groeiseizoen groeien de meeste planten nauwelijks. Dat is normaal.");
+    } else {
+      const fd = feedStatus(p), fw = num(p.voedingWeken, 0);
+      if (fw && (!p.lastFed || fd?.due)) sug.push("Geef voeding: de plant groeit nu en heeft al een tijd geen voeding gehad.");
+      else if (!fw) sug.push("Geef eens per maand een halve dosis plantenvoeding om te zien of hij reageert.");
+      sug.push("Kijk of er wortels uit de onderkant van de pot groeien. Dan staat hij te krap: verpot naar een pot die 2 tot 4 cm groter is.");
+    }
+  }
+  if (!grond && !teNat && !teDroog && (has("slap") || has("krul"))) sug.push("Voel met je vinger 3 cm diep in de grond. Nat wijst op te veel water, droog op te weinig.");
+  if (!dx.length) dx.push("Houd de plant de komende weken goed in de gaten.");
+  const uniq = [...new Set(sug)].slice(0, 7);
+  return { status, samenvatting: dx.join(" "), suggesties: uniq, ritme, datum: todayStr() };
+}
+
+/* --- settings --- */
+function settingsBody() {
+  const c = sheetCtx;
+  return `
+  <div class="panel">
+    <h4>Herkennen via foto</h4>
+    <p>De app gebruikt Pl@ntNet om planten op een foto te herkennen. Dat is gratis, maar je hebt een eigen sleutel nodig.</p>
+    <label class="f">Pl@ntNet-sleutel<input id="sKey" value="${esc(state.key)}" placeholder="Plak hier je sleutel" autocomplete="off" spellcheck="false"></label>
+    <button class="btn full" style="margin-top:10px" data-savekey>Sleutel opslaan</button>
+    <p class="hint">Sleutel aanmaken: maak een account op my.plantnet.org en open de pagina met je API-sleutel. Zet daar “expose my API key” aan en voeg bij Authorized domains dit webadres toe: <b>${esc(location.hostname || "het adres van deze app")}</b></p>
+  </div>
+  <div class="panel">
+    <h4>Reservekopie</h4>
+    <p>Alle planten en foto’s staan alleen op deze telefoon. Maak af en toe een reservekopie, bijvoorbeeld naar Google Drive, zodat je niets kwijtraakt als je telefoon stuk gaat.</p>
+    <button class="btn full" style="margin-top:10px" data-export>Reservekopie maken</button>
+    <label class="btn full file-btn" style="margin-top:10px">Reservekopie terugzetten<input type="file" accept="application/json,.json" id="importIn"></label>
+    ${c.msg ? `<div class="note">${esc(c.msg)}</div>` : ""}
+  </div>
+  <p class="hint">Plat &amp; Plant bewaart alles op dit toestel. Herkenning door Pl@ntNet; dit is geen officiële Pl@ntNet-app. Informatie over onbekende planten komt van Wikipedia.</p>`;
+}
+async function exportBackup() {
+  const data = { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(), planten: state.plants };
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+  const name = `plat-en-plant-${todayStr()}.json`;
+  const file = new File([blob], name, { type: "application/json" });
+  if (navigator.canShare?.({ files: [file] })) {
+    try { await navigator.share({ files: [file], title: "Reservekopie Plat & Plant" }); sheetCtx.msg = "Reservekopie gedeeld."; renderSheet(); return; }
+    catch (e) { if (e.name === "AbortError") return; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name; document.body.appendChild(a); a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 2000);
+  sheetCtx.msg = "Reservekopie opgeslagen bij je downloads.";
+  renderSheet();
+}
+async function importBackup(file) {
+  try {
+    const j = JSON.parse(await file.text());
+    if (j?.app !== "plat-en-plant" || !Array.isArray(j.planten)) throw 0;
+    if (!confirm(`Reservekopie met ${j.planten.length} planten terugzetten? De planten die nu in de app staan worden vervangen.`)) return;
+    await store.clear();
+    for (const p of j.planten) if (p && typeof p.id === "string") await store.put(p);
+    await reload();
+    sheetCtx.msg = `${j.planten.length} planten teruggezet.`;
+  } catch { sheetCtx.msg = "Dit bestand is geen reservekopie van Plat & Plant."; }
+  renderSheet();
+}
+
+/* ---------- images ---------- */
+async function loadImage(file) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    await new Promise((res, rej) => { img.onload = res; img.onerror = () => rej(new Error("decode")); img.src = url; });
+    return img;
+  } finally { setTimeout(() => URL.revokeObjectURL(url), 2000); }
+}
+function drawScaled(img, max) {
+  const r = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+  const c = document.createElement("canvas");
+  c.width = Math.round(img.naturalWidth * r); c.height = Math.round(img.naturalHeight * r);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+  return c;
+}
+async function processPhoto(file) {
+  const img = await loadImage(file);
+  const big = drawScaled(img, 1280);
+  const blob = await new Promise(r => big.toBlob(r, "image/jpeg", 0.85));
+  const small = drawScaled(img, 900);
+  return { blob, dataUrl: small.toDataURL("image/jpeg", 0.75) };
+}
+
+/* ---------- writes ---------- */
+let toastTimer;
+function toast(msg, undo) {
+  clearTimeout(toastTimer);
+  const host = $("#toastHost");
+  host.innerHTML = `<div class="toast" role="status"><span>${esc(msg)}</span>${undo ? `<button id="undoBtn">Ongedaan maken</button>` : ""}</div>`;
+  if (undo) $("#undoBtn").onclick = () => { host.innerHTML = ""; undo(); };
+  toastTimer = setTimeout(() => host.innerHTML = "", 5000);
+}
+async function reload() { state.plants = ((await store.all()) || []).map(p => ({ ...p, label: str(p.label) || "Plant" })); state.loaded = true; render(); }
+async function save(p, msg, undo) {
+  try { await store.put(p); await reload(); if (sheetCtx?.mode === "detail") renderSheet(); if (msg) toast(msg, undo); }
+  catch { toast("Opslaan lukte niet. Is de opslag van je telefoon vol?"); }
+}
+async function markWater(id) {
+  const p = byId(id); if (!p) return;
+  const prev = p.lastWatered ?? null;
+  await save({ ...p, lastWatered: todayStr() }, `${p.label}: water gegeven`, () => { const q = byId(id); if (q) save({ ...q, lastWatered: prev }); });
+}
+async function markFeed(id) {
+  const p = byId(id); if (!p) return;
+  const prev = p.lastFed ?? null;
+  await save({ ...p, lastFed: todayStr() }, `${p.label}: voeding gegeven`, () => { const q = byId(id); if (q) save({ ...q, lastFed: prev }); });
+}
+async function savePlant() {
+  const c = sheetCtx, data = readForm();
+  try {
+    if (c.editId) {
+      const p = byId(c.editId);
+      await store.put({ ...p, ...data }); await reload();
+      openSheet({ mode: "detail", id: c.editId }); toast("Wijzigingen opgeslagen");
+    } else {
+      const d = c.data;
+      const p = { id: uid(), ...data, over: d.over || "", bron: d.bron || "", foto: c.photo || "", gezondheid: null, lastWatered: null, lastFed: null, createdAt: new Date().toISOString() };
+      await store.put(p); await reload();
+      closeSheet(); state.tab = "plants"; render(); toast(`${p.label} toegevoegd`);
+    }
+  } catch { c.error = "Opslaan lukte niet. Is de opslag van je telefoon vol?"; renderSheet(); }
+}
+async function saveHealth() {
+  const c = sheetCtx, p = byId(c.id); if (!p) return;
+  const { ritme, ...h } = c.result;
+  await store.put({ ...p, gezondheid: h, ...(c.photo ? { foto: c.photo } : {}) });
+  await reload(); openSheet({ mode: "detail", id: p.id }); toast("Gezondheidscheck opgeslagen");
+}
+async function applyRitme() {
+  const c = sheetCtx, p = byId(c.id), r = c.result?.ritme; if (!p || !r) return;
+  await store.put({ ...p, [r.veld]: r.nieuw }); await reload();
+  toast(`Water voortaan elke ${r.nieuw} dagen`);
+  c.result.ritme = null; renderSheet();
+}
+async function deletePlant(id) {
+  const p = byId(id); if (!p) return;
+  if (!confirm(`${p.label} verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
+  await store.del(id); await reload(); closeSheet(); toast(`${p.label} verwijderd`);
+}
+
+/* ---------- events ---------- */
+document.addEventListener("click", e => {
+  const t = e.target.closest("button, [data-open]");
+  if (!t) return;
+  if (t.dataset.tab) { state.tab = t.dataset.tab; render(); window.scrollTo(0, 0); return; }
+  if (t.id === "addBtn" || t.dataset.act === "add") { openSheet({ mode: "add" }); return; }
+  if (t.hasAttribute("data-settings")) { if (sheetCtx?.mode === "add") { readAddInputs(); const back = sheetCtx; openSheet({ mode: "settings", back }); } else openSheet({ mode: "settings" }); return; }
+  if (t.dataset.open) { openSheet({ mode: "detail", id: t.dataset.open }); return; }
+  if (t.dataset.water) { markWater(t.dataset.water); return; }
+  if (t.dataset.feed) { markFeed(t.dataset.feed); return; }
+  if (t.dataset.sheet === "close") { if (sheetCtx?.mode === "settings" && sheetCtx.back) { openSheet(sheetCtx.back); return; } closeSheet(); return; }
+  if (t.dataset.sheet === "detail") { openSheet({ mode: "detail", id: sheetCtx.id || sheetCtx.editId }); return; }
+  if (t.dataset.sheet === "add") { const a = sheetCtx.addCtx || { mode: "add" }; a.busy = ""; openSheet(a); return; }
+  if (t.hasAttribute("data-identify")) { identifyPhoto(); return; }
+  if (t.hasAttribute("data-namesearch")) { nameSearch(); return; }
+  if (t.dataset.cand !== undefined) { chooseCand(Number(t.dataset.cand)); return; }
+  if (t.hasAttribute("data-stop")) { abortCtl?.abort(); sheetCtx.busy = ""; renderSheet(); return; }
+  if (t.hasAttribute("data-manual")) { readAddInputs(); goForm(genericData(sheetCtx, { naam: sheetCtx.name }), "Vul in wat je weet. Het etiket in de pot helpt vaak."); return; }
+  if (t.hasAttribute("data-save")) { savePlant(); return; }
+  if (t.dataset.edit) { const p = byId(t.dataset.edit); if (p) openSheet({ mode: "form", editId: p.id, id: p.id, data: { ...p } }); return; }
+  if (t.dataset.del) { deletePlant(t.dataset.del); return; }
+  if (t.dataset.health) { openSheet({ mode: "health", id: t.dataset.health }); return; }
+  if (t.hasAttribute("data-health-run")) { readHealthInputs(); sheetCtx.result = diagnose(byId(sheetCtx.id), sheetCtx.sel, sheetCtx.grond); renderSheet(); setTimeout(() => $("#hResult")?.scrollIntoView({ behavior: "smooth", block: "start" }), 30); return; }
+  if (t.hasAttribute("data-health-save")) { saveHealth(); return; }
+  if (t.hasAttribute("data-ritme")) { applyRitme(); return; }
+  if (t.hasAttribute("data-savekey")) { state.key = $("#sKey").value.trim(); store.set("plantnetKey", state.key).then(() => { sheetCtx.msg = ""; toast(state.key ? "Sleutel opgeslagen" : "Sleutel verwijderd"); }); return; }
+  if (t.hasAttribute("data-export")) { exportBackup(); return; }
+});
+document.addEventListener("change", async e => {
+  if (!sheetCtx) return;
+  if (e.target.dataset.sym !== undefined || e.target.id === "hGrond") { readHealthInputs(); if (sheetCtx.result) { sheetCtx.result = null; renderSheet(); } return; }
+  if (e.target.id === "importIn") { const f = e.target.files?.[0]; if (f) importBackup(f); return; }
+  if (e.target.id !== "photoIn") return;
+  const file = e.target.files?.[0]; if (!file) return;
+  const c = sheetCtx;
+  if (c.mode === "add") readAddInputs();
+  if (c.mode === "health") readHealthInputs();
+  try { const { blob, dataUrl } = await processPhoto(file); c.blob = blob; c.photo = dataUrl; c.preview = dataUrl; c.error = ""; c.cands = []; }
+  catch { c.error = "Deze foto kan niet worden geopend. Probeer een andere foto."; }
+  renderSheet();
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape" && sheetCtx) closeSheet();
+  if (e.key === "Enter" && e.target.id === "aName") { e.preventDefault(); nameSearch(); }
+});
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); if (sheetCtx?.mode === "detail") renderSheet(); } });
+
+/* ---------- boot ---------- */
+render();
+(async () => {
+  try {
+    await store.open();
+    state.key = (await store.get("plantnetKey")) || "";
+    await reload();
+    if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
+  } catch {
+    $("#main").innerHTML = brandBar() + `<div class="empty"><strong>De opslag op deze telefoon is niet beschikbaar</strong><p>Open de app in Chrome, niet in een incognitovenster.</p></div>`;
+  }
+})();
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+})();
+
+</script>
+</body>
+</html>
