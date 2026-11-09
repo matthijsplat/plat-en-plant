@@ -394,7 +394,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const state = { plants: [], tab: "today", loaded: false, key: "" };
+const state = { plants: [], tab: "today", loaded: false, key: "", meldingen: { aan: false, stil: true } };
 const byId = id => state.plants.find(p => p.id === id);
 
 /* ---------- rendering ---------- */
@@ -796,6 +796,7 @@ function diagnose(p, sel, grond) {
 function settingsBody() {
   const c = sheetCtx;
   return `
+  ${notifPanel()}
   <div class="panel">
     <h4>Herkennen via foto</h4>
     <p>De app gebruikt Pl@ntNet om planten op een foto te herkennen. Dat is gratis, maar je hebt een eigen sleutel nodig.</p>
@@ -812,6 +813,77 @@ function settingsBody() {
   </div>
   <p class="hint">Plat &amp; Plant bewaart alles op dit toestel. Herkenning door Pl@ntNet; dit is geen officiële Pl@ntNet-app. Informatie over onbekende planten komt van Wikipedia.</p>`;
 }
+/* --- notifications --- */
+const swReady = () => "serviceWorker" in navigator ? Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 4000))]) : Promise.resolve(null);
+const notifState = { support: "?", permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission };
+async function checkNotifSupport() {
+  if (typeof Notification === "undefined" || !("serviceWorker" in navigator)) { notifState.support = "nee"; return; }
+  try {
+    const reg = await swReady();
+    if (!reg || !("periodicSync" in reg)) { notifState.support = "nee"; return; }
+    const st = await navigator.permissions.query({ name: "periodic-background-sync" });
+    notifState.support = st.state === "granted" ? "ja" : "geweigerd";
+  } catch { notifState.support = "nee"; }
+}
+function notifPanel() {
+  if (typeof Notification !== "undefined") notifState.permission = Notification.permission;
+  const m = state.meldingen, on = m.aan && notifState.permission === "granted";
+  let status;
+  if (notifState.permission === "unsupported") status = "Deze telefoon of browser ondersteunt geen meldingen.";
+  else if (notifState.permission === "denied") status = "Meldingen zijn geblokkeerd. Zet ze aan via Instellingen van je telefoon, dan Apps, Chrome, Meldingen.";
+  else if (on && notifState.support === "ja") status = "Aan. De app kijkt op de achtergrond of er planten water nodig hebben.";
+  else if (on && notifState.support === "geweigerd") status = "Meldingen mogen, maar de controle op de achtergrond is niet toegestaan. Dat lukt alleen als de app via Chrome als app is geïnstalleerd.";
+  else if (on) status = "Meldingen mogen, maar deze telefoon kan de app niet op de achtergrond laten controleren. Je krijgt dan geen automatische meldingen.";
+  else status = "Uit.";
+  return `
+  <div class="panel">
+    <h4>Meldingen</h4>
+    <p>${esc(status)}</p>
+    ${notifState.permission === "unsupported" ? "" : `
+    ${on ? `<button class="btn full" style="margin-top:10px" data-notif-off>Meldingen uitzetten</button>`
+         : notifState.permission !== "denied" ? `<button class="btn leaf full" style="margin-top:10px" data-notif-on>Meldingen aanzetten</button>` : ""}
+    <div class="symptoms" style="margin-top:14px" role="radiogroup" aria-label="Soort melding">
+      <label class="sym"><input type="radio" name="nmode" value="stil" ${m.stil ? "checked" : ""}><span>Alleen op het scherm, zonder geluid of trillen</span></label>
+      <label class="sym"><input type="radio" name="nmode" value="geluid" ${!m.stil ? "checked" : ""}><span>Met geluid en trillen</span></label>
+    </div>
+    ${on ? `<button class="btn full" style="margin-top:10px" data-notif-test>Testmelding sturen</button>` : ""}
+    <p class="hint">Je krijgt hooguit één melding per dag, en niet tussen 22:00 en 08:00. Je telefoon bepaalt zelf het precieze moment. Gebruik je de app weinig of staat batterijbesparing aan, dan komt de melding soms later of niet.</p>`}
+  </div>`;
+}
+async function notifOn() {
+  try {
+    const perm = await Notification.requestPermission();
+    notifState.permission = perm;
+    if (perm !== "granted") { renderSheet(); return; }
+    state.meldingen.aan = true;
+    await store.set("meldingen", state.meldingen);
+    const reg = await swReady();
+    if (reg && "periodicSync" in reg) {
+      try { await reg.periodicSync.register("plant-check", { minInterval: 12 * 60 * 60 * 1000 }); } catch {}
+    }
+    await checkNotifSupport();
+  } catch {}
+  renderSheet();
+}
+async function notifOff() {
+  state.meldingen.aan = false;
+  await store.set("meldingen", state.meldingen);
+  try { const reg = await swReady(); if (reg && "periodicSync" in reg) await reg.periodicSync.unregister("plant-check"); } catch {}
+  renderSheet();
+}
+async function notifTest() {
+  try {
+    const reg = await swReady();
+    if (!reg) throw 0;
+    const due = state.plants.filter(p => waterStatus(p).daysLeft <= 0).map(p => p.label);
+    await reg.showNotification("Plat & Plant", {
+      body: due.length ? `Testmelding. Water nodig: ${due.join(", ")}.` : "Testmelding. Zo ziet een melding eruit.",
+      icon: "icon-192.png", badge: "icon-192.png", tag: "test",
+      silent: !!state.meldingen.stil, ...(state.meldingen.stil ? {} : { vibrate: [200, 100, 200] })
+    });
+  } catch { toast("De testmelding lukte niet."); }
+}
+
 async function exportBackup() {
   const data = { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(), planten: state.plants };
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
@@ -948,10 +1020,14 @@ document.addEventListener("click", e => {
   if (t.hasAttribute("data-ritme")) { applyRitme(); return; }
   if (t.hasAttribute("data-savekey")) { state.key = $("#sKey").value.trim(); store.set("plantnetKey", state.key).then(() => { sheetCtx.msg = ""; toast(state.key ? "Sleutel opgeslagen" : "Sleutel verwijderd"); }); return; }
   if (t.hasAttribute("data-export")) { exportBackup(); return; }
+  if (t.hasAttribute("data-notif-on")) { notifOn(); return; }
+  if (t.hasAttribute("data-notif-off")) { notifOff(); return; }
+  if (t.hasAttribute("data-notif-test")) { notifTest(); return; }
 });
 document.addEventListener("change", async e => {
   if (!sheetCtx) return;
   if (e.target.dataset.sym !== undefined || e.target.id === "hGrond") { readHealthInputs(); if (sheetCtx.result) { sheetCtx.result = null; renderSheet(); } return; }
+  if (e.target.name === "nmode") { state.meldingen.stil = e.target.value === "stil"; await store.set("meldingen", state.meldingen); toast(state.meldingen.stil ? "Meldingen zijn stil" : "Meldingen met geluid en trillen"); return; }
   if (e.target.id === "importIn") { const f = e.target.files?.[0]; if (f) importBackup(f); return; }
   if (e.target.id !== "photoIn") return;
   const file = e.target.files?.[0]; if (!file) return;
@@ -974,13 +1050,14 @@ render();
   try {
     await store.open();
     state.key = (await store.get("plantnetKey")) || "";
+    state.meldingen = { aan: false, stil: true, ...((await store.get("meldingen")) || {}) };
     await reload();
     if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
   } catch {
     $("#main").innerHTML = brandBar() + `<div class="empty"><strong>De opslag op deze telefoon is niet beschikbaar</strong><p>Open de app in Chrome, niet in een incognitovenster.</p></div>`;
   }
 })();
-if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").then(() => checkNotifSupport()).catch(() => {});
 })();
 
 </script>
