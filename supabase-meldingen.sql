@@ -84,7 +84,7 @@ begin
   values (1, p_function_url, p_public, p_private, p_subject)
   on conflict (id) do update set function_url = excluded.function_url, vapid_public = excluded.vapid_public,
     vapid_private = excluded.vapid_private, subject = excluded.subject;
-  delete from push_subscriptions; -- oude aanmeldingen horen bij de oude sleutel
+  delete from push_subscriptions where true; -- oude aanmeldingen horen bij de oude sleutel
 end $$;
 
 create or replace function public.push_public_key() returns text

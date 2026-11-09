@@ -316,7 +316,7 @@ function dbErr(j) {
   if (j?.code === "PGRST202" || j?.code === "42P01" || j?.code === "PGRST205" || /schema cache|does not exist/i.test(m))
     return "De database is nog niet ingericht. Voer het setup-script uit in Supabase.";
   if (/row-level security/i.test(m)) return "Je hebt geen toegang tot deze lijst.";
-  return "De database gaf een fout. Probeer het opnieuw.";
+  return "De database gaf een fout" + (m ? `: ${m.slice(0, 160)}` : ". Probeer het opnieuw.");
 }
 function authErr(j) {
   const m = String(j?.msg || j?.message || j?.error_description || j?.error || "");
