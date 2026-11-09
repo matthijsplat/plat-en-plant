@@ -181,6 +181,17 @@ label.f textarea{min-height:76px;resize:vertical}
 .photo-pick.small{aspect-ratio:16/7;margin-top:16px}
 .file-btn{position:relative;overflow:hidden;cursor:pointer}
 .file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+
+/* shared list */
+.listname{margin:4px 0 0;color:var(--leaf);font-weight:600}
+.req-banner{display:block;width:100%;text-align:left;margin-top:14px;border:1px solid var(--amber);background:var(--amber-soft);color:var(--amber);border-radius:14px;padding:12px 14px;font-weight:600;font-size:15.5px}
+.panel h4.sub{margin:16px 0 4px;font-size:14.5px;color:var(--muted);font-weight:600}
+.mrow{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--line);flex-wrap:wrap}
+.mname b{display:block;font-weight:600}
+.mname span{font-size:14px;color:var(--muted)}
+.mact{display:flex;gap:6px;flex-wrap:wrap}
+.btn.mini{padding:7px 10px;font-size:14px;border-radius:10px}
+.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;letter-spacing:.06em;text-align:center;background:var(--sunk);border-radius:12px;padding:14px 8px;margin:12px 0;overflow-wrap:anywhere}
 </style>
 </head>
 <body>
@@ -226,14 +237,19 @@ const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 
 const LEAF_SVG = `<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21v-8"/><path d="M12 13c0-4 3-7 8-7 0 4-3 7-8 7z"/><path d="M12 15c0-3-2.5-5.5-7-5.5 0 3 2.5 5.5 7 5.5z"/></svg>`;
 const GEAR_SVG = `<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>`;
 
-/* ---------- local storage (IndexedDB, only on this phone) ---------- */
+/* ---------- storage on this phone (IndexedDB) ---------- */
 const store = {
   db: null,
   open() {
     return new Promise((res, rej) => {
-      const r = indexedDB.open("platplant", 1);
-      r.onupgradeneeded = () => { r.result.createObjectStore("plants", { keyPath: "id" }); r.result.createObjectStore("settings"); };
-      r.onsuccess = () => { this.db = r.result; res(); };
+      const r = indexedDB.open("platplant", 2);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        if (!d.objectStoreNames.contains("plants")) d.createObjectStore("plants", { keyPath: "id" });
+        if (!d.objectStoreNames.contains("settings")) d.createObjectStore("settings");
+        if (!d.objectStoreNames.contains("photos")) d.createObjectStore("photos", { keyPath: "id" });
+      };
+      r.onsuccess = () => { this.db = r.result; this.db.onversionchange = () => this.db.close(); res(); };
       r.onerror = () => rej(r.error);
     });
   },
@@ -247,12 +263,207 @@ const store = {
     });
   },
   all() { return this.req("plants", "readonly", s => s.getAll()); },
+  getPlant(id) { return this.req("plants", "readonly", s => s.get(id)); },
   put(p) { return this.req("plants", "readwrite", s => s.put(p)); },
   del(id) { return this.req("plants", "readwrite", s => s.delete(id)); },
   clear() { return this.req("plants", "readwrite", s => s.clear()); },
   get(k) { return this.req("settings", "readonly", s => s.get(k)); },
-  set(k, v) { return this.req("settings", "readwrite", s => s.put(v, k)); }
+  set(k, v) { return this.req("settings", "readwrite", s => s.put(v, k)); },
+  photoAll() { return this.req("photos", "readonly", s => s.getAll()); },
+  photoPut(id, v, data) { return this.req("photos", "readwrite", s => s.put({ id, v, data })); },
+  photoDel(id) { return this.req("photos", "readwrite", s => s.delete(id)); }
 };
+
+/* Planten alleen op deze telefoon */
+const localBackend = {
+  async list() { return (await store.all()) || []; },
+  async patch(id, fields, create = false) {
+    const cur = await store.getPlant(id);
+    if (!cur && !create) throw { msg: "Deze plant bestaat niet meer." };
+    const p = { ...(cur || {}), ...fields, id };
+    if (!fields.foto && cur) p.foto = cur.foto || "";
+    await store.put(p);
+    return p;
+  },
+  del(id) { return store.del(id); },
+  async importAll(list) {
+    await store.clear();
+    let n = 0;
+    for (const p of list) if (p && typeof p.id === "string") { await store.put(p); n++; }
+    return { count: n };
+  },
+  async exportAll() { return { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(), planten: await store.all() }; }
+};
+
+/* Gedeelde lijst in de eigen Supabase-database van het huishouden */
+const DB_ERRORS = {
+  not_member: "Je hebt geen toegang tot deze lijst.",
+  not_found: "Deze plant bestaat niet meer.",
+  not_admin: "Alleen de beheerder kan dit doen.",
+  bad_code: "Deze uitnodiging werkt niet meer. Vraag de beheerder om een nieuwe link.",
+  bad_recovery: "Deze herstelcode klopt niet.",
+  household_exists: "In deze database bestaat al een lijst. Gebruik de uitnodigingslink om mee te doen, of herstel je beheerdersrol met je herstelcode.",
+  admin_cannot_leave: "Als beheerder kun je de lijst niet verlaten. Maak eerst iemand anders beheerder.",
+  cannot_remove_self: "Je kunt jezelf niet verwijderen.",
+  not_active_member: "Alleen een geaccepteerd lid kan beheerder worden.",
+  empty_name: "Vul een naam in.",
+  bad_time: "Kies een tijd tussen 06:00 en 22:00.",
+  bad_url: "Het adres van de database klopt niet."
+};
+function dbErr(j) {
+  const m = String(j?.message || "");
+  for (const k in DB_ERRORS) if (m.includes(k)) return DB_ERRORS[k];
+  if (j?.code === "PGRST202" || j?.code === "42P01" || j?.code === "PGRST205" || /schema cache|does not exist/i.test(m))
+    return "De database is nog niet ingericht. Voer het setup-script uit in Supabase.";
+  if (/row-level security/i.test(m)) return "Je hebt geen toegang tot deze lijst.";
+  return "De database gaf een fout. Probeer het opnieuw.";
+}
+function authErr(j) {
+  const m = String(j?.msg || j?.message || j?.error_description || j?.error || "");
+  if (/anonymous/i.test(m) || j?.error_code === "anonymous_provider_disabled")
+    return "Anoniem inloggen staat uit. Zet in Supabase bij Authentication de optie Allow anonymous sign-ins aan.";
+  if (/api ?key|apikey|invalid.*key|unregistered/i.test(m)) return "De sleutel van de database klopt niet.";
+  if (/rate|too many/i.test(m)) return "Te veel aanmeldingen in korte tijd. Probeer het over een uur opnieuw.";
+  return "Inloggen bij de database lukte niet. Controleer de gegevens en probeer het opnieuw.";
+}
+const cloud = {
+  cfg: null, // { url, key, household, name, display, role, status, invite, session }
+  async saveCfg() { await store.set("cloud", this.cfg); },
+  setSession(j) {
+    this.cfg.session = {
+      access_token: j.access_token, refresh_token: j.refresh_token,
+      expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600),
+      user_id: j.user?.id || this.cfg.session?.user_id || null
+    };
+  },
+  async signIn() {
+    let r;
+    try {
+      r = await fetch(this.cfg.url + "/auth/v1/signup", { method: "POST", headers: { apikey: this.cfg.key, "Content-Type": "application/json" }, body: JSON.stringify({ data: {} }) });
+    } catch { throw { msg: "De database is niet bereikbaar. Controleer de Project URL en je internet." }; }
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j?.access_token) throw { msg: authErr(j) };
+    this.setSession(j);
+    await this.saveCfg();
+  },
+  async token() {
+    const saved = await store.get("cloud").catch(() => null);
+    if (saved?.session && saved.url === this.cfg.url && (saved.session.expires_at || 0) > (this.cfg.session?.expires_at || 0)) this.cfg.session = saved.session;
+    const s = this.cfg.session;
+    if (!s) throw { msg: "Je bent niet ingelogd bij de gedeelde lijst." };
+    if (s.expires_at - 60 > Date.now() / 1000) return s.access_token;
+    let r;
+    try {
+      r = await fetch(this.cfg.url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: this.cfg.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
+    } catch { throw { msg: "Geen verbinding met de database. Controleer je internet.", offline: true }; }
+    const j = await r.json().catch(() => null);
+    if (!r.ok || !j?.access_token) throw { msg: "Je inlog is verlopen. Vraag opnieuw toegang via de uitnodigingslink.", auth: true };
+    this.setSession(j);
+    await this.saveCfg();
+    return j.access_token;
+  },
+  async req(path, { method = "GET", body, prefer } = {}) {
+    const t = await this.token();
+    let r;
+    try {
+      r = await fetch(this.cfg.url + path, {
+        method,
+        headers: { apikey: this.cfg.key, Authorization: "Bearer " + t, "Content-Type": "application/json", ...(prefer ? { Prefer: prefer } : {}) },
+        body: body === undefined ? undefined : JSON.stringify(body)
+      });
+    } catch { throw { msg: "Geen verbinding met de database. Controleer je internet.", offline: true }; }
+    if (r.status === 204) return null;
+    const j = await r.json().catch(() => null);
+    if (!r.ok) throw { msg: dbErr(j), code: j?.code };
+    return j;
+  },
+  rpc(fn, args) { return this.req("/rest/v1/rpc/" + fn, { method: "POST", body: args || {} }); },
+  hid() { return encodeURIComponent(this.cfg.household); },
+  async list() {
+    const rows = await this.req(`/rest/v1/plants?select=id,data&household_id=eq.${this.hid()}`);
+    const plants = (rows || []).map(r => ({ ...(r.data || {}), id: r.id }));
+    store.set("cloudCache", plants).catch(() => {});
+    this.syncPhotos().catch(() => {});
+    return plants;
+  },
+  async syncPhotos() {
+    const rows = (await this.req(`/rest/v1/photos?select=plant_id,version&household_id=eq.${this.hid()}`)) || [];
+    const cached = (await store.photoAll()) || [];
+    const have = new Map(cached.map(c => [c.id, c.v]));
+    const want = new Set(rows.map(r => r.plant_id));
+    for (const c of cached) if (!want.has(c.id)) { await store.photoDel(c.id); delete state.photoCache[c.id]; }
+    const stale = rows.filter(r => have.get(r.plant_id) !== r.version).map(r => r.plant_id).filter(id => /^[a-z0-9]{6,40}$/.test(id));
+    for (let i = 0; i < stale.length; i += 4) {
+      const got = (await this.req(`/rest/v1/photos?select=plant_id,data,version&plant_id=in.(${stale.slice(i, i + 4).join(",")})`)) || [];
+      for (const g of got) if (safeImg(g.data)) { await store.photoPut(g.plant_id, g.version, g.data); state.photoCache[g.plant_id] = g.data; }
+    }
+    if (stale.length) { render(); if (sheetCtx?.mode === "detail") renderSheet(); }
+  },
+  async patch(id, fields, create = false) {
+    const { foto, ...rest } = fields;
+    const data = await this.rpc("patch_plant", { p_id: id, p_household: this.cfg.household, p_fields: rest, p_create: create });
+    if (foto && safeImg(foto)) {
+      const v = Date.now();
+      await this.req("/rest/v1/photos?on_conflict=plant_id", { method: "POST", prefer: "resolution=merge-duplicates,return=minimal", body: { plant_id: id, household_id: this.cfg.household, data: foto, version: v } });
+      await store.photoPut(id, v, foto);
+      state.photoCache[id] = foto;
+    }
+    return { ...(data || {}), id };
+  },
+  async del(id) {
+    await this.req(`/rest/v1/plants?id=eq.${encodeURIComponent(id)}&household_id=eq.${this.hid()}`, { method: "DELETE", prefer: "return=minimal" });
+    await store.photoDel(id).catch(() => {});
+    delete state.photoCache[id];
+  },
+  async importAll(list) {
+    await this.req(`/rest/v1/plants?household_id=eq.${this.hid()}`, { method: "DELETE", prefer: "return=minimal" });
+    return this.addAll(list);
+  },
+  async addAll(list) {
+    let n = 0;
+    for (const p of list) {
+      if (!p || !/^[a-z0-9]{6,40}$/.test(p.id || "")) continue;
+      const { id, ...f } = p;
+      await this.patch(id, f, true);
+      n++;
+    }
+    return { count: n };
+  },
+  async exportAll() {
+    const plants = await this.list();
+    await this.syncPhotos().catch(() => {});
+    return { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(),
+      planten: plants.map(p => ({ ...p, ...(state.photoCache[p.id] ? { foto: state.photoCache[p.id] } : {}) })) };
+  }
+};
+const isCloud = () => !!(cloud.cfg && cloud.cfg.status === "active" && cloud.cfg.household);
+const backend = () => isCloud() ? cloud : localBackend;
+const api = {
+  list: () => backend().list(),
+  patch: (id, f, c) => backend().patch(id, f, c),
+  del: id => backend().del(id),
+  importAll: l => backend().importAll(l),
+  exportAll: () => backend().exportAll()
+};
+
+/* invitation links */
+const b64enc = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const b64dec = s => decodeURIComponent(escape(atob(s.replace(/-/g, "+").replace(/_/g, "/"))));
+const cleanUrl = u => String(u || "").trim().replace(/\/+$/, "").replace(/\/rest\/v1$/, "");
+const validUrl = u => /^https:\/\/[a-z0-9.-]+(:\d+)?$/i.test(u);
+function parseInvite(text) {
+  const m = String(text || "").match(/#join=([A-Za-z0-9_-]+)/);
+  if (!m) return null;
+  try {
+    const j = JSON.parse(b64dec(m[1]));
+    if (validUrl(cleanUrl(j.u)) && typeof j.k === "string" && j.k.length > 10 && typeof j.c === "string") return { u: cleanUrl(j.u), k: j.k, c: j.c, n: str(j.n).slice(0, 60) };
+  } catch {}
+  return null;
+}
+function inviteLink() {
+  const cf = cloud.cfg;
+  return location.origin + location.pathname + "#join=" + b64enc(JSON.stringify({ u: cf.url, k: cf.key, c: cf.invite, n: cf.name }));
+}
 
 /* ---------- seasons ---------- */
 function season(d = new Date()) {
@@ -394,12 +605,13 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const state = { plants: [], tab: "today", loaded: false, key: "", meldingen: { aan: false, stil: true } };
+const state = { plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
 /* ---------- rendering ---------- */
+function photoSrc(p) { return safeImg(p.foto) ? p.foto : (safeImg(state.photoCache[p.id]) ? state.photoCache[p.id] : ""); }
 function thumb(p, cls = "thumb") {
-  const src = safeImg(p.foto);
+  const src = photoSrc(p);
   return src ? `<img class="${cls}" src="${src}" alt="">` : `<div class="${cls} ph">${LEAF_SVG}</div>`;
 }
 function brandBar() {
@@ -408,16 +620,26 @@ function brandBar() {
 function render() {
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === state.tab ? "page" : "false"));
   const main = $("#main");
-  if (!state.loaded) { main.innerHTML = brandBar() + `<p class="status-line">Planten laden…</p>`; return; }
+  if (!state.loaded) { main.innerHTML = brandBar() + (state.loadError ? `<div class="empty"><strong>De planten kunnen niet worden geladen</strong><p>${esc(state.loadError)}</p><button class="btn" style="margin:0 auto" data-retry>Opnieuw proberen</button></div>` : `<p class="status-line">Planten laden…</p>`); return; }
   main.innerHTML = brandBar() + (state.tab === "today" ? todayView() : plantsView());
 }
 function seasonBlock() {
   const [t, d] = SEASON_TEXT[season()];
   return `<div class="season">${LEAF_SVG.replace('width="28" height="28"','width="22" height="22"')}<div><b>${t}</b><p>${d}</p></div></div>`;
 }
+function topBanners() {
+  let h = "";
+  if (state.offline) h += `<div class="note" style="margin-top:14px">Geen verbinding met de gedeelde lijst. Je ziet de laatst bekende stand.</div>`;
+  if (cloud.cfg?.status === "pending") h += `<button class="req-banner" data-settings>Wachten tot de beheerder van ${esc(cloud.cfg.name)} je accepteert</button>`;
+  if (isCloud() && cloud.cfg.role === "admin") {
+    const n = (state.members || []).filter(m => m.status === "pending").length;
+    if (n) h += `<button class="req-banner" data-settings>${n} ${n === 1 ? "huisgenoot wil" : "huisgenoten willen"} meedoen. Bekijk de aanvraag.</button>`;
+  }
+  return h;
+}
 function todayView() {
   const dateStr = new Date().toLocaleDateString("nl-NL", { weekday:"long", day:"numeric", month:"long" });
-  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p></header>${seasonBlock()}`;
+  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p>${isCloud() ? `<p class="listname">${esc(cloud.cfg.name)}</p>` : ""}</header>${topBanners()}${seasonBlock()}`;
   if (!state.plants.length) {
     return html + `<div class="empty">${LEAF_SVG}<h2 style="margin:8px 0 0">Nog geen planten</h2><p>Maak een foto van jullie eerste plant en geef hem een label. De app zoekt op hoeveel water hij nodig heeft.</p><button class="btn leaf" style="margin:0 auto" data-act="add">Eerste plant toevoegen</button></div>`;
   }
@@ -460,7 +682,7 @@ function plantsView() {
   Object.keys(rooms).sort((a,b) => a === "Zonder kamer" ? 1 : b === "Zonder kamer" ? -1 : a.localeCompare(b, "nl")).forEach(r => {
     html += `<section class="room"><h2>${esc(r)}</h2><div class="grid">` +
       rooms[r].sort((a,b) => a.label.localeCompare(b.label, "nl")).map(p => {
-        const st = waterStatus(p), src = safeImg(p.foto);
+        const st = waterStatus(p), src = photoSrc(p);
         return `<button class="tile" data-open="${esc(p.id)}" aria-label="${esc(p.label)}">
           ${src ? `<img src="${src}" alt="">` : `<div class="ph">${LEAF_SVG}</div>`}
           <span class="gauge">${gauge(st,14)}</span>
@@ -490,6 +712,12 @@ function renderSheet() {
     sheet.innerHTML = head(c.editId ? "Plant bewerken" : "Gegevens controleren", c.editId ? "detail" : "add") + `<div class="body">${formBody()}</div>`;
   } else if (c.mode === "health") {
     sheet.innerHTML = head("Gezondheidscheck", "detail") + `<div class="body">${healthBody(byId(c.id))}</div>`;
+  } else if (c.mode === "cloudCreate") {
+    sheet.innerHTML = head(c.done ? "Gedeelde lijst" : "Gedeelde lijst maken", c.done ? "close" : "settings") + `<div class="body">${cloudCreateBody()}</div>`;
+  } else if (c.mode === "cloudJoin") {
+    sheet.innerHTML = head(c.recover ? "Beheerder herstellen" : "Meedoen met een lijst", "settings") + `<div class="body">${cloudJoinBody()}</div>`;
+  } else if (c.mode === "pushSetup") {
+    sheet.innerHTML = head("Meldingen instellen", "settings") + `<div class="body">${pushSetupBody()}</div>`;
   } else if (c.mode === "settings") {
     sheet.innerHTML = head("Instellingen") + `<div class="body">${settingsBody()}</div>`;
   }
@@ -498,7 +726,7 @@ const statusKey = s => ["goed","aandacht","slecht"].includes(s) ? s : "onbekend"
 const statusLabel = s => ({goed:"Gezond", aandacht:"Aandacht nodig", slecht:"Gaat niet goed"}[s] || "Onbekend");
 
 function detailBody(p) {
-  const st = waterStatus(p), fd = feedStatus(p), s = season(), src = safeImg(p.foto), h = p.gezondheid, fw = num(p.voedingWeken, 0);
+  const st = waterStatus(p), fd = feedStatus(p), s = season(), src = photoSrc(p), h = p.gezondheid, fw = num(p.voedingWeken, 0);
   return `
   <div class="hero">${src ? `<img src="${src}" alt="Foto van ${esc(p.label)}">` : `<div class="ph">${LEAF_SVG}</div>`}</div>
   <h1 class="d-title">${esc(p.label)}</h1>
@@ -796,23 +1024,249 @@ function diagnose(p, sel, grond) {
 function settingsBody() {
   const c = sheetCtx;
   return `
+  ${sharePanel()}
   ${notifPanel()}
   <div class="panel">
-    <h4>Herkennen via foto</h4>
-    <p>De app gebruikt Pl@ntNet om planten op een foto te herkennen. Dat is gratis, maar je hebt een eigen sleutel nodig.</p>
-    <label class="f">Pl@ntNet-sleutel<input id="sKey" value="${esc(state.key)}" placeholder="Plak hier je sleutel" autocomplete="off" spellcheck="false"></label>
+    <h4>Herkennen via foto (optioneel)</h4>
+    <p>Met een gratis Pl@ntNet-sleutel kan de app planten op een foto herkennen. Zonder sleutel typ je de naam.</p>
+    <label class="f">Pl@ntNet-sleutel<input id="sKey" value="${esc(state.key)}" placeholder="Leeg laten als je geen sleutel hebt" autocomplete="off" spellcheck="false"></label>
     <button class="btn full" style="margin-top:10px" data-savekey>Sleutel opslaan</button>
-    <p class="hint">Sleutel aanmaken: maak een account op my.plantnet.org en open de pagina met je API-sleutel. Zet daar “expose my API key” aan en voeg bij Authorized domains dit webadres toe: <b>${esc(location.hostname || "het adres van deze app")}</b></p>
   </div>
   <div class="panel">
     <h4>Reservekopie</h4>
-    <p>Alle planten en foto’s staan alleen op deze telefoon. Maak af en toe een reservekopie, bijvoorbeeld naar Google Drive, zodat je niets kwijtraakt als je telefoon stuk gaat.</p>
+    <p>${isCloud() ? "Maak een kopie van de gedeelde lijst, met foto’s." : "Alle planten en foto’s staan alleen op deze telefoon. Maak af en toe een reservekopie, bijvoorbeeld naar Google Drive."}</p>
     <button class="btn full" style="margin-top:10px" data-export>Reservekopie maken</button>
     <label class="btn full file-btn" style="margin-top:10px">Reservekopie terugzetten<input type="file" accept="application/json,.json" id="importIn"></label>
     ${c.msg ? `<div class="note">${esc(c.msg)}</div>` : ""}
   </div>
-  <p class="hint">Plat &amp; Plant bewaart alles op dit toestel. Herkenning door Pl@ntNet; dit is geen officiële Pl@ntNet-app. Informatie over onbekende planten komt van Wikipedia.</p>`;
+  <p class="hint">Plat &amp; Plant. ${isCloud() ? "De gedeelde lijst staat in de eigen database van jullie huishouden." : "Alles staat op dit toestel."} Informatie over onbekende planten komt van Wikipedia.</p>`;
 }
+
+function memberRow(m, actions) {
+  const me = m.user_id === cloud.cfg?.session?.user_id;
+  const label = m.role === "admin" ? "Beheerder" : m.status === "pending" ? "Wil meedoen" : "Lid";
+  return `<div class="mrow"><div class="mname"><b>${esc(m.display_name)}${me ? " (jij)" : ""}</b><span>${label}</span></div>${actions ? `<div class="mact">${actions}</div>` : ""}</div>`;
+}
+function sharePanel() {
+  const cf = cloud.cfg;
+  if (cf && cf.status === "pending") return `
+  <div class="panel">
+    <h4>Wachten op goedkeuring</h4>
+    <p>Je hebt als ${esc(cf.display)} toegang gevraagd tot ${esc(cf.name)}. Zodra de beheerder je accepteert, zie je de gedeelde planten.</p>
+    <button class="btn leaf full" style="margin-top:10px" data-cloud-check>Opnieuw controleren</button>
+    <button class="btn full" style="margin-top:10px" data-cloud-leave>Aanvraag intrekken</button>
+  </div>`;
+  if (!isCloud()) return `
+  <div class="panel">
+    <h4>Delen met huisgenoten</h4>
+    <p>De planten staan nu alleen op deze telefoon. Met een gedeelde lijst zien al je huisgenoten dezelfde planten en kan iedereen water afvinken.</p>
+    <button class="btn leaf full" style="margin-top:10px" data-cloud-create>Gedeelde lijst maken</button>
+    <button class="btn full" style="margin-top:10px" data-cloud-join>Meedoen met een lijst</button>
+    <p class="hint">De beheerder van het huishouden maakt de lijst, met een eigen gratis Supabase-database. Huisgenoten doen mee via een uitnodigingslink.</p>
+  </div>`;
+  const admin = cf.role === "admin", me = cf.session?.user_id;
+  const mem = state.members || [];
+  const pend = mem.filter(m => m.status === "pending"), act = mem.filter(m => m.status === "active");
+  return `
+  <div class="panel">
+    <h4>${esc(cf.name)}</h4>
+    <p>Je bent ${admin ? "beheerder" : "lid"} van deze gedeelde lijst.</p>
+    ${admin && pend.length ? `<h4 class="sub">Aanvragen</h4>${pend.map(m => memberRow(m,
+      `<button class="btn mini leaf" data-m-ok="${esc(m.user_id)}">Accepteren</button><button class="btn mini" data-m-del="${esc(m.user_id)}" data-m-name="${esc(m.display_name)}">Weigeren</button>`)).join("")}` : ""}
+    <h4 class="sub">Leden</h4>
+    ${act.map(m => memberRow(m, admin && m.user_id !== me
+      ? `<button class="btn mini" data-m-admin="${esc(m.user_id)}" data-m-name="${esc(m.display_name)}">Maak beheerder</button><button class="btn mini danger" data-m-del="${esc(m.user_id)}" data-m-name="${esc(m.display_name)}">Verwijderen</button>` : "")).join("")}
+    ${admin ? `
+      <button class="btn leaf full" style="margin-top:14px" data-invite-share>Uitnodigingslink delen</button>
+      <button class="btn full" style="margin-top:10px" data-invite-new>Nieuwe link maken</button>
+      <p class="hint">Met een nieuwe link werkt de oude niet meer. Handig als de link bij de verkeerde persoon terecht is gekomen.</p>`
+    : `<button class="btn full danger" style="margin-top:14px" data-cloud-leave>Lijst verlaten</button>`}
+  </div>`;
+}
+
+/* --- create a shared list (admin) --- */
+function cloudCreateBody() {
+  const c = sheetCtx;
+  if (c.done) return `
+  <div class="note" style="margin-top:0">${esc(cloud.cfg.name)} is aangemaakt. Jij bent de beheerder.</div>
+  <div class="panel">
+    <h4>Jouw herstelcode</h4>
+    <p>Bewaar deze code goed, bijvoorbeeld in je wachtwoordmanager of op papier. Raak je je telefoon kwijt, dan word je hiermee opnieuw beheerder. De code wordt maar één keer getoond.</p>
+    <p class="code">${esc(c.recovery)}</p>
+    <button class="btn full" data-copy="${esc(c.recovery)}">Code kopiëren</button>
+  </div>
+  <div class="panel">
+    <h4>Huisgenoten uitnodigen</h4>
+    <p>Stuur de link via WhatsApp. Huisgenoten openen hem, typen hun naam en vragen toegang. Jij accepteert ze daarna bij Instellingen.</p>
+    <button class="btn leaf full" style="margin-top:10px" data-invite-share>Uitnodigingslink delen</button>
+  </div>
+  ${c.localCount ? `<div class="panel">
+    <h4>Planten meenemen</h4>
+    <p>Er ${c.localCount === 1 ? "staat 1 plant" : `staan ${c.localCount} planten`} alleen op deze telefoon. Zet ze in de gedeelde lijst, met foto’s en water-ritme.</p>
+    ${c.migrated ? `<div class="note">${esc(c.migrated)}</div>` : c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:10px" data-cloud-migrate>Planten meenemen</button>`}
+  </div>` : ""}
+  <button class="btn full" style="margin-top:14px" data-sheet="close">Klaar</button>`;
+  return `
+  <p style="margin-top:4px">Maak eerst een gratis Supabase-database aan. Dat duurt ongeveer een half uur en gaat het makkelijkst op een laptop.</p>
+  <a class="btn full" style="margin-top:10px;text-decoration:none;color:inherit" href="handleiding.html" target="_blank" rel="noopener">Handleiding openen</a>
+  <p class="hint">Heb je de stappen uit de handleiding gedaan? Vul dan hieronder de gegevens in.</p>
+  <label class="f">Project URL<input id="cUrl" value="${esc(c.url || "")}" placeholder="https://abcdefgh.supabase.co" autocomplete="off" spellcheck="false" inputmode="url"></label>
+  <label class="f">Publishable key (of anon key)<input id="cKey" value="${esc(c.key || "")}" placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label>
+  <label class="f">Naam van de lijst<input id="cName" value="${esc(c.name || "")}" placeholder="Bijv. Huize Plat" maxlength="60"></label>
+  <label class="f">Jouw naam<input id="cMe" value="${esc(c.me || "")}" placeholder="Bijv. Matthijs" maxlength="40"></label>
+  ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
+  ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:16px" data-cloud-create-go>Lijst aanmaken</button>`}`;
+}
+async function cloudCreateGo() {
+  const c = sheetCtx;
+  c.url = cleanUrl($("#cUrl").value); c.key = $("#cKey").value.trim(); c.name = $("#cName").value.trim(); c.me = $("#cMe").value.trim();
+  c.error = "";
+  if (!validUrl(c.url)) c.error = "De Project URL moet beginnen met https:// en eindigen op .supabase.co.";
+  else if (c.key.length < 20) c.error = "Plak de volledige publishable key of anon key.";
+  else if (!c.name || !c.me) c.error = "Vul de naam van de lijst en je eigen naam in.";
+  if (c.error) { renderSheet(); return; }
+  c.busy = "Lijst aanmaken…"; renderSheet();
+  const prev = cloud.cfg;
+  try {
+    cloud.cfg = { url: c.url, key: c.key, household: null, name: c.name, display: c.me, role: null, status: null, invite: null, session: null };
+    await cloud.signIn();
+    const r = await cloud.rpc("create_household", { p_name: c.name, p_display: c.me });
+    Object.assign(cloud.cfg, { household: r.household, name: r.name, invite: r.invite, role: "admin", status: "active" });
+    await cloud.saveCfg();
+    c.recovery = r.recovery; c.done = true; c.busy = "";
+    c.localCount = ((await store.all()) || []).length;
+    state.photoCache = {};
+    await reload();
+  } catch (e) {
+    cloud.cfg = prev; await store.set("cloud", prev || null).catch(() => {});
+    c.busy = ""; c.error = e?.msg || "Het aanmaken lukte niet.";
+  }
+  renderSheet();
+}
+async function cloudMigrate() {
+  const c = sheetCtx;
+  c.busy = "Planten overzetten…"; renderSheet();
+  try {
+    const local = (await store.all()) || [];
+    const r = await cloud.addAll(local);
+    c.migrated = `${r.count} ${r.count === 1 ? "plant staat" : "planten staan"} nu in de gedeelde lijst.`;
+    await reload();
+  } catch (e) { c.migrated = e?.msg || "Overzetten lukte niet. Probeer het later via Reservekopie."; }
+  c.busy = ""; renderSheet();
+}
+
+/* --- join a shared list (housemate) or recover admin role --- */
+function cloudJoinBody() {
+  const c = sheetCtx;
+  return `
+  ${c.link ? `<p style="margin-top:4px">Je bent uitgenodigd voor <b>${esc(c.link.n || "een gedeelde lijst")}</b>.</p>`
+    : `<label class="f">Uitnodigingslink<input id="jLink" value="${esc(c.linkText || "")}" placeholder="Plak hier de link uit WhatsApp" autocomplete="off" spellcheck="false"></label>`}
+  <label class="f">Jouw naam<input id="jMe" value="${esc(c.me || "")}" placeholder="Bijv. Sanne" maxlength="40"></label>
+  ${c.recover ? `<label class="f">Herstelcode<input id="jRec" value="${esc(c.rec || "")}" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" spellcheck="false"></label>` : ""}
+  ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
+  ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>`
+    : `<button class="btn leaf full" style="margin-top:16px" data-cloud-join-go>${c.recover ? "Beheerder herstellen" : "Toegang vragen"}</button>`}
+  ${isCloud() ? `<p class="hint">Let op: je doet nu mee met een andere lijst. Je verlaat dan de huidige gedeelde lijst op deze telefoon.</p>` : ""}
+  <p class="hint">Gebruik je een iPhone? Zet de app dan eerst op je beginscherm, open hem daar, kies Meedoen met een lijst en plak de link.</p>
+  <button class="linkish" style="margin-top:14px" data-cloud-recover-toggle>${c.recover ? "Ik wil gewoon meedoen" : "Ik ben de beheerder en wil mijn toegang herstellen"}</button>`;
+}
+async function cloudJoinGo() {
+  const c = sheetCtx;
+  if (!c.link) { c.linkText = $("#jLink")?.value.trim() || ""; }
+  c.me = $("#jMe").value.trim(); c.rec = $("#jRec")?.value.trim() || "";
+  const link = c.link || parseInvite(c.linkText);
+  c.error = "";
+  if (!link) c.error = "Dit is geen geldige uitnodigingslink. Kopieer de hele link uit het bericht.";
+  else if (!c.me) c.error = "Vul je naam in.";
+  else if (c.recover && c.rec.replace(/[^A-Za-z0-9]/g, "").length !== 16) c.error = "De herstelcode bestaat uit 16 tekens.";
+  if (c.error) { renderSheet(); return; }
+  c.busy = c.recover ? "Beheerder herstellen…" : "Toegang vragen…"; renderSheet();
+  const prev = cloud.cfg;
+  try {
+    const sameDb = prev && prev.url === link.u && prev.session;
+    cloud.cfg = { url: link.u, key: link.k, household: null, name: link.n || "de lijst", display: c.me, role: null, status: null, invite: null, session: sameDb ? prev.session : null };
+    if (!sameDb) await cloud.signIn();
+    if (c.recover) {
+      const r = await cloud.rpc("recover_admin", { p_recovery: c.rec, p_display: c.me });
+      Object.assign(cloud.cfg, { household: r.household, name: r.name, invite: r.invite, role: "admin", status: "active" });
+    } else {
+      const r = await cloud.rpc("join_household", { p_code: link.c, p_display: c.me });
+      Object.assign(cloud.cfg, { household: r.household, name: r.name, role: r.role, status: r.status });
+    }
+    await cloud.saveCfg();
+    state.photoCache = {};
+    if (isCloud()) {
+      await reload();
+      closeSheet();
+      toast(c.recover ? `Je bent weer beheerder van ${cloud.cfg.name}` : `Je doet mee met ${cloud.cfg.name}`);
+      if (c.recover) setTimeout(() => toast("Verwijder je oude telefoon bij Instellingen, Leden."), 5200);
+    } else {
+      await reload();
+      openSheet({ mode: "settings" });
+    }
+  } catch (e) {
+    cloud.cfg = prev; await store.set("cloud", prev || null).catch(() => {});
+    c.busy = ""; c.error = e?.msg || "Dat lukte niet. Probeer het opnieuw."; renderSheet();
+  }
+}
+async function cloudCheck() {
+  try {
+    const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
+    if (!st) { await lostAccess("De beheerder heeft je aanvraag niet geaccepteerd."); return; }
+    Object.assign(cloud.cfg, { status: st.status, role: st.role, name: st.name, invite: st.invite });
+    await cloud.saveCfg();
+    if (isCloud()) { await reload(); closeSheet(); toast(`Je bent geaccepteerd voor ${cloud.cfg.name}`); }
+    else toast("Nog niet geaccepteerd. Probeer het later opnieuw.");
+  } catch (e) { toast(e?.msg || "Controleren lukte niet."); }
+}
+async function cloudLeave() {
+  const pending = cloud.cfg?.status === "pending";
+  if (!confirm(pending ? "Aanvraag intrekken?" : `Wil je ${cloud.cfg.name} verlaten? Je ziet de gedeelde planten dan niet meer op deze telefoon.`)) return;
+  try { await cloud.rpc("leave_household", { p_household: cloud.cfg.household }); }
+  catch (e) { if (!pending) { toast(e?.msg || "Verlaten lukte niet."); return; } }
+  await lostAccess(pending ? "Aanvraag ingetrokken." : "Je hebt de gedeelde lijst verlaten.");
+}
+async function lostAccess(msg) {
+  cloud.cfg = null;
+  push.key = undefined; push.sub = null;
+  state.members = [];
+  state.photoCache = {};
+  await store.set("cloud", null).catch(() => {});
+  await reload().catch(() => {});
+  if (sheetCtx?.mode === "settings") renderSheet();
+  toast(msg + " De app toont weer de planten van deze telefoon.");
+}
+async function memberAction(kind, uid, name) {
+  const h = cloud.cfg.household;
+  try {
+    if (kind === "ok") await cloud.rpc("approve_member", { p_household: h, p_user: uid });
+    if (kind === "del") { if (!confirm(`${name} verwijderen uit ${cloud.cfg.name}?`)) return; await cloud.rpc("remove_member", { p_household: h, p_user: uid }); }
+    if (kind === "admin") { if (!confirm(`${name} beheerder maken? Jij wordt dan gewoon lid.`)) return; await cloud.rpc("transfer_admin", { p_household: h, p_user: uid }); }
+    await reload();
+    renderSheet();
+    toast(kind === "ok" ? `${name} kan nu meedoen` : kind === "del" ? `${name} verwijderd` : `${name} is nu beheerder`);
+  } catch (e) { toast(e?.msg || "Dat lukte niet."); }
+}
+async function newInvite() {
+  if (!confirm("Nieuwe uitnodigingslink maken? De oude link werkt dan niet meer.")) return;
+  try {
+    cloud.cfg.invite = await cloud.rpc("new_invite", { p_household: cloud.cfg.household });
+    await cloud.saveCfg();
+    toast("Nieuwe link gemaakt");
+    renderSheet();
+  } catch (e) { toast(e?.msg || "Dat lukte niet."); }
+}
+async function shareInvite() {
+  const link = inviteLink();
+  const text = `Doe mee met ${cloud.cfg.name} in Plat & Plant, dan houden we samen de planten bij:`;
+  if (navigator.share) { try { await navigator.share({ title: "Plat & Plant", text, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  copyText(link, "Link gekopieerd. Plak hem in WhatsApp.");
+}
+async function copyText(t, msg = "Gekopieerd") {
+  try { await navigator.clipboard.writeText(t); toast(msg); }
+  catch { prompt("Kopieer deze tekst:", t); }
+}
+
 /* --- notifications --- */
 const swReady = () => "serviceWorker" in navigator ? Promise.race([navigator.serviceWorker.ready, new Promise(r => setTimeout(() => r(null), 4000))]) : Promise.resolve(null);
 const notifState = { support: "?", permission: typeof Notification === "undefined" ? "unsupported" : Notification.permission };
@@ -825,7 +1279,7 @@ async function checkNotifSupport() {
     notifState.support = st.state === "granted" ? "ja" : "geweigerd";
   } catch { notifState.support = "nee"; }
 }
-function notifPanel() {
+function localNotifPanel() {
   if (typeof Notification !== "undefined") notifState.permission = Notification.permission;
   const m = state.meldingen, on = m.aan && notifState.permission === "granted";
   let status;
@@ -884,8 +1338,151 @@ async function notifTest() {
   } catch { toast("De testmelding lukte niet."); }
 }
 
+/* --- timed notifications through the household's own Supabase --- */
+const push = { key: undefined, sub: null, checking: false };
+const b64uBytes = s => Uint8Array.from(atob(s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4)), c => c.charCodeAt(0));
+const bytesB64u = b => btoa(String.fromCharCode(...new Uint8Array(b))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+const isBrave = () => !!navigator.brave;
+
+async function pushRefresh() {
+  if (push.checking || !isCloud()) return;
+  push.checking = true;
+  try { push.key = (await cloud.rpc("push_public_key", {})) || null; } catch { push.key = null; }
+  try {
+    const reg = await swReady();
+    push.sub = reg?.pushManager ? await reg.pushManager.getSubscription() : null;
+  } catch { push.sub = null; }
+  push.checking = false;
+  if (sheetCtx?.mode === "settings") renderSheet();
+}
+function notifPanel() {
+  if (!isCloud()) return localNotifPanel();
+  if (push.key === undefined) { pushRefresh(); return `<div class="panel"><h4>Meldingen</h4><p class="hint">Even kijken wat er mogelijk is…</p></div>`; }
+  if (!push.key) {
+    const admin = cloud.cfg.role === "admin";
+    return `
+  <div class="panel">
+    <h4>Meldingen op een vast tijdstip</h4>
+    <p>${admin ? "Dit is nog niet ingesteld voor deze lijst. Het kost je eenmalig een kwartier in Supabase."
+                : "De beheerder van de lijst moet dit eerst instellen. Tot die tijd bepaalt je telefoon zelf het moment van de melding."}</p>
+    ${admin ? `<button class="btn leaf full" style="margin-top:10px" data-push-setup>Instellen</button>` : ""}
+  </div>
+  ${localNotifPanel()}`;
+  }
+  if (typeof Notification === "undefined" || !("PushManager" in window)) return `
+  <div class="panel"><h4>Meldingen</h4><p>Deze browser kan geen meldingen ontvangen. Gebruik je een iPhone? Zet de app dan op je beginscherm en open hem daar.</p></div>`;
+  const m = state.meldingen, on = !!(m.push && push.sub && Notification.permission === "granted");
+  const tijd = m.tijd || "18:00";
+  return `
+  <div class="panel">
+    <h4>Meldingen</h4>
+    <p>${on ? `Aan. Je krijgt elke dag om ${esc(tijd)} een melding als er planten water nodig hebben. Hebben je huisgenoten al water gegeven, dan krijg je niets.`
+            : Notification.permission === "denied" ? "Meldingen zijn geblokkeerd. Zet ze aan via de instellingen van je telefoon of browser."
+            : "Uit. Kies een tijdstip en zet de meldingen aan."}</p>
+    <label class="f">Tijdstip<input type="time" id="nTime" value="${esc(tijd)}" min="06:00" max="22:00" step="300"></label>
+    ${on ? `<button class="btn full" style="margin-top:10px" data-push-test>Testmelding sturen</button>
+            <button class="btn full" style="margin-top:10px" data-push-off>Meldingen uitzetten</button>`
+         : Notification.permission !== "denied" ? `<button class="btn leaf full" style="margin-top:10px" data-push-on>Meldingen aanzetten</button>` : ""}
+    <div class="symptoms" style="margin-top:14px" role="radiogroup" aria-label="Soort melding">
+      <label class="sym"><input type="radio" name="nmode" value="stil" ${m.stil ? "checked" : ""}><span>Alleen op het scherm, zonder geluid of trillen</span></label>
+      <label class="sym"><input type="radio" name="nmode" value="geluid" ${!m.stil ? "checked" : ""}><span>Met geluid en trillen</span></label>
+    </div>
+    <p class="hint">Je kunt een tijd kiezen tussen 06:00 en 22:00. De melding komt binnen vijf minuten na het gekozen tijdstip.${isBrave() ? " Gebruik je Brave? Zet dan in Brave bij Instellingen, Privacy en beveiliging de optie Google-services voor pushberichten gebruiken aan." : ""}</p>
+  </div>`;
+}
+function pushError(e) {
+  const n = e?.name || "", msg = String(e?.message || "");
+  if (n === "NotAllowedError") return "Je hebt meldingen niet toegestaan.";
+  if (/push service|AbortError/i.test(n + msg) && isBrave()) return "Brave blokkeert pushmeldingen. Zet in Brave bij Instellingen, Privacy en beveiliging de optie Google-services voor pushberichten gebruiken aan, en probeer het opnieuw.";
+  return e?.msg || "Aanzetten lukte niet. Probeer het opnieuw.";
+}
+async function pushSave(sub) {
+  const j = sub.toJSON();
+  await cloud.rpc("save_subscription", {
+    p_household: cloud.cfg.household, p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh || null, p_auth: j.keys?.auth || null,
+    p_time: state.meldingen.tijd || "18:00", p_tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"
+  });
+}
+async function pushOn() {
+  try {
+    const t = $("#nTime")?.value; if (t) state.meldingen.tijd = t;
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") { renderSheet(); return; }
+    const reg = await swReady();
+    if (!reg?.pushManager) throw { msg: "Deze browser ondersteunt geen pushmeldingen. Op een iPhone werkt het alleen als de app op het beginscherm staat." };
+    let sub = await reg.pushManager.getSubscription();
+    if (sub && sub.options?.applicationServerKey && bytesB64u(sub.options.applicationServerKey) !== push.key) { await sub.unsubscribe(); sub = null; }
+    sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(push.key) });
+    await pushSave(sub);
+    push.sub = sub;
+    state.meldingen.push = true; state.meldingen.aan = true;
+    await store.set("meldingen", state.meldingen);
+    toast(`Meldingen staan aan om ${state.meldingen.tijd || "18:00"}`);
+  } catch (e) { toast(pushError(e)); }
+  renderSheet();
+}
+async function pushOff() {
+  try {
+    if (push.sub) { const ep = push.sub.endpoint; await push.sub.unsubscribe().catch(() => {}); await cloud.rpc("delete_subscription", { p_endpoint: ep }).catch(() => {}); }
+    push.sub = null; state.meldingen.push = false; state.meldingen.aan = false;
+    await store.set("meldingen", state.meldingen);
+    toast("Meldingen staan uit");
+  } catch (e) { toast(e?.msg || "Uitzetten lukte niet."); }
+  renderSheet();
+}
+async function pushTime(v) {
+  if (!/^\d{2}:\d{2}$/.test(v)) return;
+  if (v < "06:00" || v > "22:00") { toast("Kies een tijd tussen 06:00 en 22:00."); renderSheet(); return; }
+  state.meldingen.tijd = v;
+  await store.set("meldingen", state.meldingen);
+  if (state.meldingen.push && push.sub) {
+    try { await pushSave(push.sub); toast(`Meldingen komen voortaan om ${v}`); } catch (e) { toast(e?.msg || "Opslaan lukte niet."); }
+  }
+  renderSheet();
+}
+async function pushTest() {
+  try { await cloud.rpc("push_test", { p_endpoint: push.sub.endpoint }); toast("Testmelding aangevraagd. Hij komt binnen vijf minuten."); }
+  catch (e) { toast(e?.msg || "De testmelding lukte niet."); }
+}
+
+/* admin: connect the household's Supabase to send notifications */
+function pushSetupBody() {
+  const c = sheetCtx;
+  return `
+  <p style="margin-top:4px">Je doet dit één keer voor de hele lijst. De stappen in Supabase doe je het makkelijkst op een laptop. Daarna tik je hier op je telefoon op Koppelen.</p>
+  <a class="btn full" style="margin-top:10px;text-decoration:none;color:inherit" href="handleiding.html#meldingen" target="_blank" rel="noopener">Handleiding openen</a>
+  <p class="hint">Heb je het script uitgevoerd en de functie plat-push aangemaakt met Verify JWT uit? Tik dan op Koppelen.</p>
+  ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
+  ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:16px" data-push-connect>Koppelen</button>`}`;
+}
+async function pushConnect() {
+  const c = sheetCtx;
+  c.error = ""; c.busy = "Koppelen…"; renderSheet();
+  const fnUrl = cloud.cfg.url + "/functions/v1/plat-push";
+  try {
+    let st = 0;
+    try { st = (await fetch(fnUrl, { method: "POST", body: "{}" })).status; } catch { st = -1; }
+    if (st !== 403) throw { msg: st === 404 ? "De functie plat-push is niet gevonden. Controleer of je hem precies zo hebt genoemd en hebt gedeployed."
+      : "De functie plat-push is niet bereikbaar. Controleer of hij is gedeployed en of Verify JWT uit staat." };
+    const kp = await crypto.subtle.generateKey({ name: "ECDSA", namedCurve: "P-256" }, true, ["sign", "verify"]);
+    const pub = bytesB64u(await crypto.subtle.exportKey("raw", kp.publicKey));
+    const { kty, crv, x, y, d } = await crypto.subtle.exportKey("jwk", kp.privateKey);
+    await cloud.rpc("setup_push", { p_household: cloud.cfg.household, p_function_url: fnUrl, p_public: pub, p_private: { kty, crv, x, y, d }, p_subject: location.origin + location.pathname });
+    push.key = pub; push.sub = null; state.meldingen.push = false;
+    await store.set("meldingen", state.meldingen);
+    openSheet({ mode: "settings" });
+    toast("Gekoppeld. Kies nu je tijdstip en zet de meldingen aan.");
+  } catch (e) {
+    c.busy = "";
+    c.error = (e?.code === "PGRST202" || /ingericht/.test(e?.msg || "")) ? "Het meldingen-script (supabase-meldingen.sql) is nog niet uitgevoerd in Supabase." : (e?.msg || "Koppelen lukte niet.");
+    renderSheet();
+  }
+}
+
 async function exportBackup() {
-  const data = { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(), planten: state.plants };
+  let data;
+  sheetCtx.msg = "Reservekopie maken…"; renderSheet();
+  try { data = await api.exportAll(); } catch (e) { sheetCtx.msg = e?.msg || "Dat lukte niet."; renderSheet(); return; }
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
   const name = `plat-en-plant-${todayStr()}.json`;
   const file = new File([blob], name, { type: "application/json" });
@@ -903,12 +1500,12 @@ async function importBackup(file) {
   try {
     const j = JSON.parse(await file.text());
     if (j?.app !== "plat-en-plant" || !Array.isArray(j.planten)) throw 0;
-    if (!confirm(`Reservekopie met ${j.planten.length} planten terugzetten? De planten die nu in de app staan worden vervangen.`)) return;
-    await store.clear();
-    for (const p of j.planten) if (p && typeof p.id === "string") await store.put(p);
+    if (!confirm(`Reservekopie met ${j.planten.length} planten terugzetten? De planten die nu in de ${isCloud() ? "gedeelde lijst" : "app"} staan worden vervangen${isCloud() ? ", ook voor je huisgenoten" : ""}.`)) return;
+    sheetCtx.msg = "Bezig met terugzetten…"; renderSheet();
+    const r = await api.importAll(j.planten);
     await reload();
-    sheetCtx.msg = `${j.planten.length} planten teruggezet.`;
-  } catch { sheetCtx.msg = "Dit bestand is geen reservekopie van Plat & Plant."; }
+    sheetCtx.msg = `${r.count} planten teruggezet.`;
+  } catch (e) { sheetCtx.msg = e?.msg || "Dit bestand is geen reservekopie van Plat & Plant."; }
   renderSheet();
 }
 
@@ -945,52 +1542,77 @@ function toast(msg, undo) {
   if (undo) $("#undoBtn").onclick = () => { host.innerHTML = ""; undo(); };
   toastTimer = setTimeout(() => host.innerHTML = "", 5000);
 }
-async function reload() { state.plants = ((await store.all()) || []).map(p => ({ ...p, label: str(p.label) || "Plant" })); state.loaded = true; render(); }
-async function save(p, msg, undo) {
-  try { await store.put(p); await reload(); if (sheetCtx?.mode === "detail") renderSheet(); if (msg) toast(msg, undo); }
-  catch { toast("Opslaan lukte niet. Is de opslag van je telefoon vol?"); }
+async function reload() {
+  if (isCloud()) {
+    const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
+    if (!st || st.status !== "active") { await lostAccess("Je hebt geen toegang meer tot de gedeelde lijst."); return; }
+    Object.assign(cloud.cfg, { role: st.role, name: st.name, invite: st.invite, display: st.display });
+    store.set("cloud", cloud.cfg).catch(() => {});
+    state.members = (await cloud.req(`/rest/v1/members?select=user_id,display_name,role,status,created_at&household_id=eq.${cloud.hid()}&order=created_at`)) || [];
+  } else if (cloud.cfg?.status === "pending") {
+    state.members = [];
+  }
+  const list = await api.list();
+  state.plants = list.map(p => ({ ...p, label: str(p.label) || "Plant" }));
+  state.loaded = true; state.loadError = ""; state.offline = false;
+  render();
+  if (sheetCtx?.mode === "detail") renderSheet();
+}
+function setLocal(p) {
+  const q = { ...p, label: str(p.label) || "Plant" };
+  const i = state.plants.findIndex(x => x.id === p.id);
+  if (i >= 0) state.plants[i] = q; else state.plants.push(q);
+  render(); if (sheetCtx?.mode === "detail") renderSheet();
+}
+async function patch(id, fields, msg, undo) {
+  try { const p = await api.patch(id, fields); setLocal(p); if (msg) toast(msg, undo); return p; }
+  catch (e) { toast(e?.msg || "Opslaan lukte niet."); reload().catch(() => {}); return null; }
 }
 async function markWater(id) {
   const p = byId(id); if (!p) return;
   const prev = p.lastWatered ?? null;
-  await save({ ...p, lastWatered: todayStr() }, `${p.label}: water gegeven`, () => { const q = byId(id); if (q) save({ ...q, lastWatered: prev }); });
+  setLocal({ ...p, lastWatered: todayStr() });
+  await patch(id, { lastWatered: todayStr() }, `${p.label}: water gegeven`, () => patch(id, { lastWatered: prev }));
 }
 async function markFeed(id) {
   const p = byId(id); if (!p) return;
   const prev = p.lastFed ?? null;
-  await save({ ...p, lastFed: todayStr() }, `${p.label}: voeding gegeven`, () => { const q = byId(id); if (q) save({ ...q, lastFed: prev }); });
+  setLocal({ ...p, lastFed: todayStr() });
+  await patch(id, { lastFed: todayStr() }, `${p.label}: voeding gegeven`, () => patch(id, { lastFed: prev }));
 }
 async function savePlant() {
   const c = sheetCtx, data = readForm();
+  const btn = sheet.querySelector("[data-save]"); if (btn) { btn.disabled = true; btn.textContent = "Bezig met opslaan…"; }
   try {
     if (c.editId) {
-      const p = byId(c.editId);
-      await store.put({ ...p, ...data }); await reload();
+      const p = await api.patch(c.editId, data); setLocal(p);
       openSheet({ mode: "detail", id: c.editId }); toast("Wijzigingen opgeslagen");
     } else {
       const d = c.data;
-      const p = { id: uid(), ...data, over: d.over || "", bron: d.bron || "", foto: c.photo || "", gezondheid: null, lastWatered: null, lastFed: null, createdAt: new Date().toISOString() };
-      await store.put(p); await reload();
+      const p = await api.patch(uid(), { ...data, over: d.over || "", bron: d.bron || "", foto: c.photo || "", gezondheid: null, lastWatered: null, lastFed: null, createdAt: new Date().toISOString() }, true);
+      setLocal(p);
       closeSheet(); state.tab = "plants"; render(); toast(`${p.label} toegevoegd`);
     }
-  } catch { c.error = "Opslaan lukte niet. Is de opslag van je telefoon vol?"; renderSheet(); }
+  } catch (e) { c.data = { ...c.data, ...data }; c.error = e?.msg || "Opslaan lukte niet."; renderSheet(); }
 }
 async function saveHealth() {
   const c = sheetCtx, p = byId(c.id); if (!p) return;
   const { ritme, ...h } = c.result;
-  await store.put({ ...p, gezondheid: h, ...(c.photo ? { foto: c.photo } : {}) });
-  await reload(); openSheet({ mode: "detail", id: p.id }); toast("Gezondheidscheck opgeslagen");
+  try {
+    const q = await api.patch(p.id, { gezondheid: h, ...(c.photo ? { foto: c.photo } : {}) });
+    setLocal(q); openSheet({ mode: "detail", id: p.id }); toast("Gezondheidscheck opgeslagen");
+  } catch (e) { toast(e?.msg || "Opslaan lukte niet."); }
 }
 async function applyRitme() {
   const c = sheetCtx, p = byId(c.id), r = c.result?.ritme; if (!p || !r) return;
-  await store.put({ ...p, [r.veld]: r.nieuw }); await reload();
-  toast(`Water voortaan elke ${r.nieuw} dagen`);
-  c.result.ritme = null; renderSheet();
+  const q = await patch(p.id, { [r.veld]: r.nieuw }, `Water voortaan elke ${r.nieuw} dagen`);
+  if (q) { c.result.ritme = null; renderSheet(); }
 }
 async function deletePlant(id) {
   const p = byId(id); if (!p) return;
-  if (!confirm(`${p.label} verwijderen? Dit kan niet ongedaan worden gemaakt.`)) return;
-  await store.del(id); await reload(); closeSheet(); toast(`${p.label} verwijderd`);
+  if (!confirm(`${p.label} verwijderen? Dit kan niet ongedaan worden gemaakt${isCloud() ? ", ook niet voor je huisgenoten" : ""}.`)) return;
+  try { await api.del(id); state.plants = state.plants.filter(x => x.id !== id); closeSheet(); render(); toast(`${p.label} verwijderd`); }
+  catch (e) { toast(e?.msg || "Verwijderen lukte niet."); }
 }
 
 /* ---------- events ---------- */
@@ -999,6 +1621,7 @@ document.addEventListener("click", e => {
   if (!t) return;
   if (t.dataset.tab) { state.tab = t.dataset.tab; render(); window.scrollTo(0, 0); return; }
   if (t.id === "addBtn" || t.dataset.act === "add") { openSheet({ mode: "add" }); return; }
+  if (t.hasAttribute("data-settings")) push.key = undefined;
   if (t.hasAttribute("data-settings")) { if (sheetCtx?.mode === "add") { readAddInputs(); const back = sheetCtx; openSheet({ mode: "settings", back }); } else openSheet({ mode: "settings" }); return; }
   if (t.dataset.open) { openSheet({ mode: "detail", id: t.dataset.open }); return; }
   if (t.dataset.water) { markWater(t.dataset.water); return; }
@@ -1020,6 +1643,27 @@ document.addEventListener("click", e => {
   if (t.hasAttribute("data-ritme")) { applyRitme(); return; }
   if (t.hasAttribute("data-savekey")) { state.key = $("#sKey").value.trim(); store.set("plantnetKey", state.key).then(() => { sheetCtx.msg = ""; toast(state.key ? "Sleutel opgeslagen" : "Sleutel verwijderd"); }); return; }
   if (t.hasAttribute("data-export")) { exportBackup(); return; }
+  if (t.dataset.sheet === "settings") { openSheet({ mode: "settings" }); return; }
+  if (t.hasAttribute("data-retry")) { state.loadError = ""; render(); reload().catch(er => { state.loadError = er?.msg || "Onbekende fout."; render(); }); return; }
+  if (t.hasAttribute("data-cloud-create")) { openSheet({ mode: "cloudCreate" }); return; }
+  if (t.hasAttribute("data-cloud-join")) { openSheet({ mode: "cloudJoin" }); return; }
+  if (t.hasAttribute("data-cloud-create-go")) { cloudCreateGo(); return; }
+  if (t.hasAttribute("data-cloud-join-go")) { cloudJoinGo(); return; }
+  if (t.hasAttribute("data-cloud-recover-toggle")) { const c = sheetCtx; if (!c.link) c.linkText = $("#jLink")?.value.trim() || ""; c.me = $("#jMe")?.value.trim() || ""; c.recover = !c.recover; c.error = ""; renderSheet(); return; }
+  if (t.hasAttribute("data-cloud-migrate")) { cloudMigrate(); return; }
+  if (t.hasAttribute("data-cloud-check")) { cloudCheck(); return; }
+  if (t.hasAttribute("data-cloud-leave")) { cloudLeave(); return; }
+  if (t.dataset.mOk) { memberAction("ok", t.dataset.mOk, nameOf(t.dataset.mOk)); return; }
+  if (t.dataset.mDel) { memberAction("del", t.dataset.mDel, nameOf(t.dataset.mDel)); return; }
+  if (t.dataset.mAdmin) { memberAction("admin", t.dataset.mAdmin, nameOf(t.dataset.mAdmin)); return; }
+  if (t.hasAttribute("data-invite-share")) { shareInvite(); return; }
+  if (t.hasAttribute("data-push-setup")) { openSheet({ mode: "pushSetup" }); return; }
+  if (t.hasAttribute("data-push-connect")) { pushConnect(); return; }
+  if (t.hasAttribute("data-push-on")) { pushOn(); return; }
+  if (t.hasAttribute("data-push-off")) { pushOff(); return; }
+  if (t.hasAttribute("data-push-test")) { pushTest(); return; }
+  if (t.hasAttribute("data-invite-new")) { newInvite(); return; }
+  if (t.dataset.copy) { copyText(t.dataset.copy); return; }
   if (t.hasAttribute("data-notif-on")) { notifOn(); return; }
   if (t.hasAttribute("data-notif-off")) { notifOff(); return; }
   if (t.hasAttribute("data-notif-test")) { notifTest(); return; }
@@ -1027,6 +1671,7 @@ document.addEventListener("click", e => {
 document.addEventListener("change", async e => {
   if (!sheetCtx) return;
   if (e.target.dataset.sym !== undefined || e.target.id === "hGrond") { readHealthInputs(); if (sheetCtx.result) { sheetCtx.result = null; renderSheet(); } return; }
+  if (e.target.id === "nTime") { pushTime(e.target.value); return; }
   if (e.target.name === "nmode") { state.meldingen.stil = e.target.value === "stil"; await store.set("meldingen", state.meldingen); toast(state.meldingen.stil ? "Meldingen zijn stil" : "Meldingen met geluid en trillen"); return; }
   if (e.target.id === "importIn") { const f = e.target.files?.[0]; if (f) importBackup(f); return; }
   if (e.target.id !== "photoIn") return;
@@ -1042,20 +1687,52 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape" && sheetCtx) closeSheet();
   if (e.key === "Enter" && e.target.id === "aName") { e.preventDefault(); nameSearch(); }
 });
-document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); if (sheetCtx?.mode === "detail") renderSheet(); } });
+const nameOf = id => (state.members || []).find(m => m.user_id === id)?.display_name || "Deze persoon";
+document.addEventListener("visibilitychange", () => { if (!document.hidden) { render(); if (sheetCtx?.mode === "detail") renderSheet(); refresh(); } });
+let refreshing = false;
+async function refresh() {
+  if (refreshing || !state.loaded || document.hidden) return;
+  const pending = cloud.cfg?.status === "pending";
+  if (!isCloud() && !pending) return;
+  if (sheetCtx && !["detail", "settings"].includes(sheetCtx.mode)) return;
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
+  refreshing = true;
+  try {
+    if (pending) {
+      const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
+      if (st?.status === "active") { Object.assign(cloud.cfg, { status: "active", role: st.role, name: st.name, invite: st.invite }); await cloud.saveCfg(); await reload(); toast(`Je bent geaccepteerd voor ${cloud.cfg.name}`); }
+      else if (!st) await lostAccess("De beheerder heeft je aanvraag niet geaccepteerd.");
+    } else {
+      await reload();
+    }
+    if (sheetCtx?.mode === "settings") renderSheet();
+  } catch (e) { if (e?.offline && !state.offline) { state.offline = true; render(); } }
+  refreshing = false;
+}
+setInterval(refresh, 20000);
 
 /* ---------- boot ---------- */
 render();
 (async () => {
-  try {
-    await store.open();
-    state.key = (await store.get("plantnetKey")) || "";
-    state.meldingen = { aan: false, stil: true, ...((await store.get("meldingen")) || {}) };
-    await reload();
-    if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
-  } catch {
-    $("#main").innerHTML = brandBar() + `<div class="empty"><strong>De opslag op deze telefoon is niet beschikbaar</strong><p>Open de app in Chrome, niet in een incognitovenster.</p></div>`;
+  try { await store.open(); }
+  catch {
+    $("#main").innerHTML = brandBar() + `<div class="empty"><strong>De opslag op deze telefoon is niet beschikbaar</strong><p>Open de app in Chrome of Safari, niet in een incognitovenster.</p></div>`;
+    return;
   }
+  state.key = (await store.get("plantnetKey").catch(() => "")) || "";
+  state.meldingen = { aan: false, stil: true, ...((await store.get("meldingen").catch(() => null)) || {}) };
+  cloud.cfg = (await store.get("cloud").catch(() => null)) || null;
+  for (const ph of ((await store.photoAll().catch(() => [])) || [])) state.photoCache[ph.id] = ph.data;
+  const inv = parseInvite(location.hash);
+  if (location.hash.startsWith("#join=")) history.replaceState(null, "", location.pathname + location.search);
+  try { await reload(); }
+  catch (e) {
+    const cache = isCloud() ? await store.get("cloudCache").catch(() => null) : null;
+    if (cache) { state.plants = cache.map(p => ({ ...p, label: str(p.label) || "Plant" })); state.loaded = true; state.offline = true; render(); }
+    else { state.loadError = e?.msg || "Onbekende fout."; render(); }
+  }
+  if (inv) openSheet({ mode: "cloudJoin", link: inv });
+  if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 })();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").then(() => checkNotifSupport()).catch(() => {});
 })();
