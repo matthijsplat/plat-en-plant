@@ -79,7 +79,9 @@ a{color:var(--leaf)}
 document.querySelectorAll("button.copy").forEach(b => b.onclick = async () => {
   const out = b.nextElementSibling;
   try {
-    const t = await (await fetch(b.dataset.file, { cache: "no-store" })).text();
+    const r = await fetch(b.dataset.file, { cache: "no-store" });
+    if (!r.ok) throw 0;
+    const t = await r.text();
     await navigator.clipboard.writeText(t);
     out.textContent = "Gekopieerd!";
   } catch { out.innerHTML = `Kopiëren lukte niet. Open <a href="${b.dataset.file}" target="_blank">het bestand</a> en kopieer alles.`; }
