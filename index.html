@@ -1167,7 +1167,7 @@ function cloudJoinBody() {
   ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>`
     : `<button class="btn leaf full" style="margin-top:16px" data-cloud-join-go>${c.recover ? "Beheerder herstellen" : "Toegang vragen"}</button>`}
   ${isCloud() ? `<p class="hint">Let op: je doet nu mee met een andere lijst. Je verlaat dan de huidige gedeelde lijst op deze telefoon.</p>` : ""}
-  <p class="hint">Gebruik je een iPhone? Zet de app dan eerst op je beginscherm, open hem daar, kies Meedoen met een lijst en plak de link.</p>
+  <p class="hint">Gebruik je een iPhone? Zet de app dan eerst op je beginscherm, open hem daar, kies Meedoen met een lijst en plak de link. <a href="handleiding.html#iphone" target="_blank" rel="noopener" style="color:var(--water)">Zo werkt dat stap voor stap.</a></p>
   <button class="linkish" style="margin-top:14px" data-cloud-recover-toggle>${c.recover ? "Ik wil gewoon meedoen" : "Ik ben de beheerder en wil mijn toegang herstellen"}</button>`;
 }
 async function cloudJoinGo() {
