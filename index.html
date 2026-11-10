@@ -625,7 +625,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "10 november 2026 (ranglijst)";
+const APP_VERSIE = "10 november 2026 (iPhone-fix)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -1891,7 +1891,11 @@ render();
     if (cache) { state.plants = cache.map(p => ({ ...p, label: str(p.label) || "Plant" })); state.loaded = true; state.offline = true; render(); }
     else { state.loadError = e?.msg || "Onbekende fout."; render(); }
   }
-  if (inv) openSheet({ mode: "cloudJoin", link: inv });
+  if (inv) {
+    const already = cloud.cfg && cloud.cfg.url === inv.u && (isCloud() || cloud.cfg.status === "pending");
+    if (already) toast(isCloud() ? `Je doet al mee met ${cloud.cfg.name}` : "Je aanvraag loopt nog. De beheerder moet je nog accepteren.");
+    else openSheet({ mode: "cloudJoin", link: inv });
+  }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 })();
 if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").then(() => checkNotifSupport()).catch(() => {});
