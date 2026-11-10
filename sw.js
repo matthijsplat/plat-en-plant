@@ -1,4 +1,4 @@
-const CACHE = "platplant-v5";
+const CACHE = "gietgenoten-v6";
 const FILES = ["./", "./index.html", "./planten-db.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
@@ -114,7 +114,7 @@ function dueMessage(plants, now) {
   if (lines.length > 7) shown.push(`en nog ${lines.length - 7} andere`);
   if (foodOnly.length) shown.push(`Voeding bij de volgende waterbeurt: ${namesText(foodOnly.map(p => p.label || "Plant"))}`);
   const title = water.length === 1 ? `${water[0].label || "Een plant"} heeft water nodig`
-    : water.length ? `${water.length} planten hebben water nodig` : "Plat & Plant";
+    : water.length ? `${water.length} planten hebben water nodig` : "Gietgenoten";
   return { title, body: shown.length ? shown.join("\n") : "Alle planten hebben op dit moment genoeg water.", count: water.length };
 }
 function showDue(plants, settings) {
@@ -134,7 +134,7 @@ async function onPush() {
   db.close();
 }
 self.addEventListener("push", e => {
-  e.waitUntil(onPush().catch(() => self.registration.showNotification("Plat & Plant", { body: "Bekijk welke planten water nodig hebben.", icon: "icon-192.png", tag: "water" })));
+  e.waitUntil(onPush().catch(() => self.registration.showNotification("Gietgenoten", { body: "Bekijk welke planten water nodig hebben.", icon: "icon-192.png", tag: "water" })));
 });
 self.addEventListener("periodicsync", e => { if (e.tag === "plant-check") e.waitUntil(checkPlants().catch(() => {})); });
 self.addEventListener("notificationclick", e => {

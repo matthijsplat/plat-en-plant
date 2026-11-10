@@ -4,10 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#2E6B3F">
-<title>Plat &amp; Plant</title>
+<title>Gietgenoten</title>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Gietgenoten">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400;12..96,500;12..96,600;12..96,700&display=swap" rel="stylesheet">
@@ -163,10 +165,10 @@ label.f textarea{min-height:76px;resize:vertical}
 .toast button{background:none;border:0;color:var(--bg);font-weight:700;text-decoration:underline;padding:4px}
 .status-line{color:var(--muted);font-size:14px;margin-top:10px}
 
-/* Plat & Plant additions */
+/* Gietgenoten additions */
 .brand{display:flex;align-items:center;justify-content:space-between;margin:0 0 6px}
 .wordmark{font-weight:700;font-size:19px;letter-spacing:-.01em;color:var(--leaf)}
-.wordmark .amp{font-weight:400;font-style:italic;color:var(--water)}
+.wordmark .w1{color:var(--water)}
 .linkish{background:none;border:0;padding:0;color:var(--water);text-decoration:underline;font-size:inherit}
 .search-row{display:flex;gap:8px;align-items:flex-end}
 .search-row .btn{padding:11px 16px}
@@ -312,7 +314,7 @@ const localBackend = {
     for (const p of list) if (p && typeof p.id === "string") { await store.put(p); n++; }
     return { count: n };
   },
-  async exportAll() { return { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(), planten: await store.all() }; }
+  async exportAll() { return { app: "gietgenoten", versie: 1, gemaakt: new Date().toISOString(), planten: await store.all() }; }
 };
 
 /* Gedeelde lijst in de eigen Supabase-database van het huishouden */
@@ -452,7 +454,7 @@ const cloud = {
   async exportAll() {
     const plants = await this.list();
     await this.syncPhotos().catch(() => {});
-    return { app: "plat-en-plant", versie: 1, gemaakt: new Date().toISOString(),
+    return { app: "gietgenoten", versie: 1, gemaakt: new Date().toISOString(),
       planten: plants.map(p => ({ ...p, ...(state.photoCache[p.id] ? { foto: state.photoCache[p.id] } : {}) })) };
   }
 };
@@ -625,7 +627,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "10 november 2026 (iPhone-fix)";
+const APP_VERSIE = "10 november 2026 (Gietgenoten)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -636,7 +638,7 @@ function thumb(p, cls = "thumb") {
   return src ? `<img class="${cls}" src="${src}" alt="">` : `<div class="${cls} ph">${LEAF_SVG}</div>`;
 }
 function brandBar() {
-  return `<div class="brand"><span class="wordmark">Plat <span class="amp">&amp;</span> Plant</span><button class="icon-btn" data-settings aria-label="Instellingen">${GEAR_SVG}</button></div>`;
+  return `<div class="brand"><span class="wordmark"><span class="w1">Giet</span>genoten</span><button class="icon-btn" data-settings aria-label="Instellingen">${GEAR_SVG}</button></div>`;
 }
 function render() {
   document.querySelectorAll(".tab").forEach(b => b.setAttribute("aria-current", b.dataset.tab === state.tab ? "page" : "false"));
@@ -1074,7 +1076,7 @@ function settingsBody() {
     <label class="btn full file-btn" style="margin-top:10px">Reservekopie terugzetten<input type="file" accept="application/json,.json" id="importIn"></label>
     ${c.msg ? `<div class="note">${esc(c.msg)}</div>` : ""}
   </div>
-  <p class="hint">Plat &amp; Plant, versie ${APP_VERSIE}. ${isCloud() ? "De gedeelde lijst staat in de eigen database van jullie huishouden." : "Alles staat op dit toestel."} Informatie over onbekende planten komt van Wikipedia.</p>`;
+  <p class="hint">Gietgenoten, wie giet, geniet. Versie ${APP_VERSIE}. ${isCloud() ? "De gedeelde lijst staat in de eigen database van jullie huishouden." : "Alles staat op dit toestel."} Informatie over onbekende planten komt van Wikipedia.</p>`;
 }
 
 function memberRow(m, actions) {
@@ -1147,7 +1149,7 @@ function cloudCreateBody() {
   <p class="hint">Heb je de stappen uit de handleiding gedaan? Vul dan hieronder de gegevens in.</p>
   <label class="f">Project URL<input id="cUrl" value="${esc(c.url || "")}" placeholder="https://abcdefgh.supabase.co" autocomplete="off" spellcheck="false" inputmode="url"></label>
   <label class="f">Publishable key (of anon key)<input id="cKey" value="${esc(c.key || "")}" placeholder="sb_publishable_…" autocomplete="off" spellcheck="false"></label>
-  <label class="f">Naam van de lijst<input id="cName" value="${esc(c.name || "")}" placeholder="Bijv. Huize Plat" maxlength="60"></label>
+  <label class="f">Naam van de lijst<input id="cName" value="${esc(c.name || "")}" placeholder="Bijv. Huize Jansen" maxlength="60"></label>
   <label class="f">Jouw naam<input id="cMe" value="${esc(c.me || "")}" placeholder="Bijv. Matthijs" maxlength="40"></label>
   ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
   ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:16px" data-cloud-create-go>Lijst aanmaken</button>`}`;
@@ -1294,8 +1296,8 @@ async function newInvite() {
 }
 async function shareInvite() {
   const link = inviteLink();
-  const text = `Doe mee met ${cloud.cfg.name} in Plat & Plant, dan houden we samen de planten bij:`;
-  if (navigator.share) { try { await navigator.share({ title: "Plat & Plant", text, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
+  const text = `Doe mee met ${cloud.cfg.name} in Gietgenoten, dan houden we samen de planten bij:`;
+  if (navigator.share) { try { await navigator.share({ title: "Gietgenoten", text, url: link }); return; } catch (e) { if (e.name === "AbortError") return; } }
   copyText(link, "Link gekopieerd. Plak hem in WhatsApp.");
 }
 async function copyText(t, msg = "Gekopieerd") {
@@ -1366,7 +1368,7 @@ async function notifTest() {
     const reg = await swReady();
     if (!reg) throw 0;
     const due = state.plants.filter(p => waterStatus(p).daysLeft <= 0).map(p => p.label);
-    await reg.showNotification("Plat & Plant", {
+    await reg.showNotification("Gietgenoten", {
       body: due.length ? `Testmelding. Water nodig: ${due.join(", ")}.` : "Testmelding. Zo ziet een melding eruit.",
       icon: "icon-192.png", badge: "icon-192.png", tag: "test",
       silent: !!state.meldingen.stil, ...(state.meldingen.stil ? {} : { vibrate: [200, 100, 200] })
@@ -1624,10 +1626,10 @@ async function exportBackup() {
   sheetCtx.msg = "Reservekopie maken…"; renderSheet();
   try { data = await api.exportAll(); } catch (e) { sheetCtx.msg = e?.msg || "Dat lukte niet."; renderSheet(); return; }
   const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
-  const name = `plat-en-plant-${todayStr()}.json`;
+  const name = `gietgenoten-${todayStr()}.json`;
   const file = new File([blob], name, { type: "application/json" });
   if (navigator.canShare?.({ files: [file] })) {
-    try { await navigator.share({ files: [file], title: "Reservekopie Plat & Plant" }); sheetCtx.msg = "Reservekopie gedeeld."; renderSheet(); return; }
+    try { await navigator.share({ files: [file], title: "Reservekopie Gietgenoten" }); sheetCtx.msg = "Reservekopie gedeeld."; renderSheet(); return; }
     catch (e) { if (e.name === "AbortError") return; }
   }
   const a = document.createElement("a");
@@ -1639,13 +1641,13 @@ async function exportBackup() {
 async function importBackup(file) {
   try {
     const j = JSON.parse(await file.text());
-    if (j?.app !== "plat-en-plant" || !Array.isArray(j.planten)) throw 0;
+    if (!["plat-en-plant", "gietgenoten"].includes(j?.app) || !Array.isArray(j.planten)) throw 0;
     if (!confirm(`Reservekopie met ${j.planten.length} planten terugzetten? De planten die nu in de ${isCloud() ? "gedeelde lijst" : "app"} staan worden vervangen${isCloud() ? ", ook voor je huisgenoten" : ""}.`)) return;
     sheetCtx.msg = "Bezig met terugzetten…"; renderSheet();
     const r = await api.importAll(j.planten);
     await reload();
     sheetCtx.msg = `${r.count} planten teruggezet.`;
-  } catch (e) { sheetCtx.msg = e?.msg || "Dit bestand is geen reservekopie van Plat & Plant."; }
+  } catch (e) { sheetCtx.msg = e?.msg || "Dit bestand is geen reservekopie van Gietgenoten."; }
   renderSheet();
 }
 

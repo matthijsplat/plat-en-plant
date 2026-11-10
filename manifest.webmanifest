@@ -1,7 +1,7 @@
 {
-  "name": "Plat & Plant",
-  "short_name": "Plat & Plant",
-  "description": "Water en verzorging voor de planten van de familie Plat",
+  "name": "Gietgenoten",
+  "short_name": "Gietgenoten",
+  "description": "Wie giet, geniet. Samen je kamerplanten verzorgen.",
   "lang": "nl",
   "start_url": "./",
   "scope": "./",
