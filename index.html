@@ -625,6 +625,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
+const APP_VERSIE = "10 november 2026 (ranglijst)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -1073,7 +1074,7 @@ function settingsBody() {
     <label class="btn full file-btn" style="margin-top:10px">Reservekopie terugzetten<input type="file" accept="application/json,.json" id="importIn"></label>
     ${c.msg ? `<div class="note">${esc(c.msg)}</div>` : ""}
   </div>
-  <p class="hint">Plat &amp; Plant. ${isCloud() ? "De gedeelde lijst staat in de eigen database van jullie huishouden." : "Alles staat op dit toestel."} Informatie over onbekende planten komt van Wikipedia.</p>`;
+  <p class="hint">Plat &amp; Plant, versie ${APP_VERSIE}. ${isCloud() ? "De gedeelde lijst staat in de eigen database van jullie huishouden." : "Alles staat op dit toestel."} Informatie over onbekende planten komt van Wikipedia.</p>`;
 }
 
 function memberRow(m, actions) {
@@ -1553,7 +1554,13 @@ async function loadStats(range) {
 }
 async function loadMonthTop() {
   if (!isCloud()) { state.monthTop = null; return; }
-  try { state.monthTop = await loadStats(periodRange("maand")); } catch { state.monthTop = null; }
+  try { state.monthTop = await loadStats(periodRange("maand")); state.statsError = ""; }
+  catch (e) {
+    state.monthTop = null;
+    state.statsError = e?.code === "PGRST202" || /ingericht/.test(e?.msg || "")
+      ? "De ranglijst is nog niet ingericht. Voer het nieuwe setup-script uit in Supabase."
+      : (e?.msg || "De ranglijst kon niet worden geladen.");
+  }
 }
 const MEDALS = ["🥇", "🥈", "🥉"];
 function rankRows(list, max) {
@@ -1570,7 +1577,8 @@ function rankRows(list, max) {
     </div>`).join("");
 }
 function rankCard() {
-  if (!isCloud() || !state.monthTop) return "";
+  if (!isCloud()) return "";
+  if (!state.monthTop) return state.statsError ? `<h2>Ranglijst deze maand</h2><div class="err">${esc(state.statsError)}</div>` : "";
   const list = state.monthTop.filter(r => r.water || r.voeding);
   return `
   <h2>Ranglijst deze maand</h2>
