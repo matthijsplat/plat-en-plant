@@ -1,4 +1,4 @@
-const CACHE = "platplant-v4";
+const CACHE = "platplant-v5";
 const FILES = ["./", "./index.html", "./planten-db.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
@@ -88,16 +88,39 @@ async function checkPlants() {
   if ((await req(db, "settings", "readonly", s => s.get("laatsteMelding"))) === today) return;
   const plants = (await cloudPlants(db)) ?? ((await req(db, "plants", "readonly", st => st.getAll())) || []);
   const s = season(now);
-  const due = plants.filter(p => needsWater(p, now, s)).map(p => p.label || "Plant");
-  if (!due.length) return;
-  await showDue(due, settings);
+  if (!plants.some(p => needsWater(p, now, s))) return;
+  await showDue(plants, settings);
   await req(db, "settings", "readwrite", st => st.put(today, "laatsteMelding"));
   db.close();
 }
-function showDue(due, settings) {
-  return self.registration.showNotification("Plat & Plant", {
-    body: due.length ? `${due.length === 1 ? "Water nodig" : `${due.length} planten hebben water nodig`}: ${namesText(due)}.`
-                     : "Alle planten hebben op dit moment genoeg water.",
+function amountFor(p, s) {
+  const ml = Math.min(5000, Math.max(10, num(p.waterMl, 200)));
+  return s === "rust" ? Math.max(10, Math.round(ml * 0.8 / 10) * 10) : ml;
+}
+function needsFood(p, today, s) {
+  const w = num(p.voedingWeken, 0);
+  if (!w || s !== "groei") return false;
+  if (!p.lastFed) return true;
+  const next = parseYmd(p.lastFed); next.setDate(next.getDate() + w * 7);
+  return next <= parseYmd(ymd(today));
+}
+/* Per plant een regel, bijvoorbeeld "Kerstcactus: 120 ml water + voeding" */
+function dueMessage(plants, now) {
+  const s = season(now);
+  const water = plants.filter(p => needsWater(p, now, s));
+  const foodOnly = plants.filter(p => !needsWater(p, now, s) && needsFood(p, now, s));
+  const lines = water.map(p => `${p.label || "Plant"}: ${amountFor(p, s)} ml water${needsFood(p, now, s) ? " + voeding" : ""}`);
+  const shown = lines.slice(0, 7);
+  if (lines.length > 7) shown.push(`en nog ${lines.length - 7} andere`);
+  if (foodOnly.length) shown.push(`Voeding bij de volgende waterbeurt: ${namesText(foodOnly.map(p => p.label || "Plant"))}`);
+  const title = water.length === 1 ? `${water[0].label || "Een plant"} heeft water nodig`
+    : water.length ? `${water.length} planten hebben water nodig` : "Plat & Plant";
+  return { title, body: shown.length ? shown.join("\n") : "Alle planten hebben op dit moment genoeg water.", count: water.length };
+}
+function showDue(plants, settings) {
+  const m = dueMessage(plants, new Date());
+  return self.registration.showNotification(m.title, {
+    body: m.body,
     icon: "icon-192.png", badge: "icon-192.png", tag: "water",
     silent: !!settings.stil, ...(settings.stil ? {} : { vibrate: [200, 100, 200] })
   });
@@ -106,10 +129,8 @@ function showDue(due, settings) {
 async function onPush() {
   const db = await openDb();
   const settings = (await req(db, "settings", "readonly", s => s.get("meldingen"))) || {};
-  const now = new Date(), s = season(now);
   const plants = (await cloudPlants(db)) ?? ((await req(db, "plants", "readonly", st => st.getAll())) || []);
-  const due = plants.filter(p => needsWater(p, now, s)).map(p => p.label || "Plant");
-  await showDue(due, settings);
+  await showDue(plants, settings);
   db.close();
 }
 self.addEventListener("push", e => {

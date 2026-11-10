@@ -192,6 +192,26 @@ label.f textarea{min-height:76px;resize:vertical}
 .mact{display:flex;gap:6px;flex-wrap:wrap}
 .btn.mini{padding:7px 10px;font-size:14px;border-radius:10px}
 .code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:22px;letter-spacing:.06em;text-align:center;background:var(--sunk);border-radius:12px;padding:14px 8px;margin:12px 0;overflow-wrap:anywhere}
+.facts .by{color:var(--muted)}
+
+/* leaderboard */
+.rank{display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-top:1px solid var(--line)}
+.rank:first-child{border-top:0;padding-top:2px}
+.pos{width:30px;flex:none;text-align:center;font-size:22px;line-height:1.2;font-weight:700;color:var(--muted)}
+.rinfo{flex:1;min-width:0}
+.rname{display:flex;justify-content:space-between;gap:10px}
+.rname b{font-weight:600}
+.rname span{color:var(--water);font-weight:600;white-space:nowrap}
+.bar{height:8px;border-radius:99px;background:var(--sunk);margin-top:6px;overflow:hidden}
+.bar span{display:block;height:100%;background:var(--water);border-radius:99px}
+.rsub{font-size:14px;color:var(--muted);margin-top:4px}
+.chips{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
+.chip-btn{border:1px solid var(--line);background:var(--surface);border-radius:99px;padding:8px 16px;font-weight:600;font-size:15px}
+.chip-btn.on{background:var(--leaf);border-color:var(--leaf);color:var(--bg)}
+.pnav{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:16px 0 6px}
+.pnav b{font-size:19px;flex:1;text-align:center}
+.pnav .icon-btn{font-size:24px;line-height:1}
+.pnav .icon-btn:disabled{opacity:.35}
 </style>
 </head>
 <body>
@@ -605,7 +625,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const state = { plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
+const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
 /* ---------- rendering ---------- */
@@ -651,6 +671,7 @@ function todayView() {
   html += due.length ? due.map(rowDue).join("") : `<div class="allgood">${gauge({daysLeft:1,iv:1},18)} Alle planten hebben genoeg water.</div>`;
   if (feedOnly.length) html += `<h2>Voeding geven</h2>` + feedOnly.map(rowFeed).join("");
   if (soon.length) html += `<h2>Binnenkort</h2>` + soon.map(rowSoon).join("");
+  html += rankCard();
   return html;
 }
 function rowDue({ p, st, fd }) {
@@ -716,6 +737,8 @@ function renderSheet() {
     sheet.innerHTML = head(c.done ? "Gedeelde lijst" : "Gedeelde lijst maken", c.done ? "close" : "settings") + `<div class="body">${cloudCreateBody()}</div>`;
   } else if (c.mode === "cloudJoin") {
     sheet.innerHTML = head(c.recover ? "Beheerder herstellen" : "Meedoen met een lijst", "settings") + `<div class="body">${cloudJoinBody()}</div>`;
+  } else if (c.mode === "stats") {
+    sheet.innerHTML = head("Ranglijst") + `<div class="body">${statsBody()}</div>`;
   } else if (c.mode === "pushSetup") {
     sheet.innerHTML = head("Meldingen instellen", "settings") + `<div class="body">${pushSetupBody()}</div>`;
   } else if (c.mode === "settings") {
@@ -725,6 +748,17 @@ function renderSheet() {
 const statusKey = s => ["goed","aandacht","slecht"].includes(s) ? s : "onbekend";
 const statusLabel = s => ({goed:"Gezond", aandacht:"Aandacht nodig", slecht:"Gaat niet goed"}[s] || "Onbekend");
 
+function waterHistory(p) {
+  const log = waterLog(p).slice(0, 2);
+  if (!log.length) return `<dt>Laatst gegeven</dt><dd>Nog niet</dd>`;
+  const line = e => `${esc(fmtDate(e.d))}${e.door ? ` <span class="by">(${esc(e.door)})</span>` : ""}`;
+  let h = `<dt>Laatst gegeven</dt><dd>${line(log[0])}</dd>`;
+  if (log[1]) {
+    const gap = dayDiff(log[1].d, log[0].d);
+    h += `<dt>Keer daarvoor</dt><dd>${line(log[1])}</dd><dt>Daartussen</dt><dd>${gap} ${gap === 1 ? "dag" : "dagen"}</dd>`;
+  }
+  return h;
+}
 function detailBody(p) {
   const st = waterStatus(p), fd = feedStatus(p), s = season(), src = photoSrc(p), h = p.gezondheid, fw = num(p.voedingWeken, 0);
   return `
@@ -740,7 +774,7 @@ function detailBody(p) {
     <div class="big-now">${gauge(st,30)}<div><div class="n">${amountFor(p)} ml</div><div class="u">elke ${st.iv} dagen in deze periode</div></div></div>
     <dl class="facts">
       <dt>Volgende keer</dt><dd class="${st.daysLeft < 0 ? "warn-line" : ""}">${whenText(st)}${st.never ? "" : " (" + esc(fmtDate(st.next)) + ")"}</dd>
-      <dt>Laatst gegeven</dt><dd>${p.lastWatered ? esc(fmtDate(p.lastWatered)) : "Nog niet"}</dd>
+      ${waterHistory(p)}
       <dt>Zomer / winter</dt><dd>elke ${num(p.waterGroeiDagen,7)} / ${num(p.waterRustDagen,14)} dagen</dd>
     </dl>
     ${p.waterTip ? `<p class="hint">${esc(p.waterTip)}</p>` : ""}
@@ -1228,6 +1262,7 @@ async function cloudLeave() {
 }
 async function lostAccess(msg) {
   cloud.cfg = null;
+  state.stats = {}; state.monthTop = null;
   push.key = undefined; push.sub = null;
   state.members = [];
   state.photoCache = {};
@@ -1479,6 +1514,103 @@ async function pushConnect() {
   }
 }
 
+/* --- leaderboard: who watered how often --- */
+async function logEvent(plantId, kind) {
+  if (!isCloud()) return null;
+  try {
+    const r = await cloud.req("/rest/v1/waterings?select=id", { method: "POST", prefer: "return=representation",
+      body: { household_id: cloud.cfg.household, plant_id: plantId, display_name: cloud.cfg.display || "Iemand", kind, day: todayStr() } });
+    state.stats = {}; state.monthTop = null;
+    return r?.[0]?.id || null;
+  } catch { return null; }
+}
+function unlogEvent(logId) {
+  if (!logId || !isCloud()) return;
+  state.stats = {}; state.monthTop = null;
+  cloud.req(`/rest/v1/waterings?id=eq.${encodeURIComponent(logId)}`, { method: "DELETE", prefer: "return=minimal" }).catch(() => {});
+}
+function periodRange(type, off = 0) {
+  const now = new Date();
+  if (type === "week") {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - ((now.getDay() + 6) % 7) + off * 7);
+    const e = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6);
+    const f = x => x.toLocaleDateString("nl-NL", { day: "numeric", month: "short" });
+    return { from: ymd(d), to: ymd(e), label: off === 0 ? "Deze week" : off === -1 ? "Vorige week" : `${f(d)} tot en met ${f(e)}` };
+  }
+  if (type === "maand") {
+    const d = new Date(now.getFullYear(), now.getMonth() + off, 1), e = new Date(d.getFullYear(), d.getMonth() + 1, 0);
+    const label = d.toLocaleDateString("nl-NL", { month: "long", year: "numeric" });
+    return { from: ymd(d), to: ymd(e), label: label.charAt(0).toUpperCase() + label.slice(1) };
+  }
+  if (type === "jaar") { const y = now.getFullYear() + off; return { from: `${y}-01-01`, to: `${y}-12-31`, label: String(y) }; }
+  return { from: "2000-01-01", to: "2999-12-31", label: "Sinds het begin" };
+}
+async function loadStats(range) {
+  const key = range.from + "|" + range.to;
+  state.stats ||= {};
+  if (!state.stats[key]) state.stats[key] = await cloud.rpc("stats", { p_household: cloud.cfg.household, p_from: range.from, p_to: range.to }) || [];
+  return state.stats[key];
+}
+async function loadMonthTop() {
+  if (!isCloud()) { state.monthTop = null; return; }
+  try { state.monthTop = await loadStats(periodRange("maand")); } catch { state.monthTop = null; }
+}
+const MEDALS = ["🥇", "🥈", "🥉"];
+function rankRows(list, max) {
+  const me = cloud.cfg?.session?.user_id;
+  const top = Math.max(1, ...list.map(r => r.water));
+  return list.slice(0, max).map((r, i) => `
+    <div class="rank">
+      <span class="pos">${MEDALS[i] || i + 1}</span>
+      <div class="rinfo">
+        <div class="rname"><b>${esc(r.name)}${r.user_id === me ? " (jij)" : ""}</b><span>${r.water}× water</span></div>
+        <div class="bar"><span style="width:${Math.round(r.water / top * 100)}%"></span></div>
+        <div class="rsub">${[r.voeding ? `${r.voeding}× voeding` : "", r.planten ? `${r.planten} ${r.planten === 1 ? "plant" : "verschillende planten"}` : ""].filter(Boolean).join(", ")}</div>
+      </div>
+    </div>`).join("");
+}
+function rankCard() {
+  if (!isCloud() || !state.monthTop) return "";
+  const list = state.monthTop.filter(r => r.water || r.voeding);
+  return `
+  <h2>Ranglijst deze maand</h2>
+  <div class="panel" style="margin-top:0">
+    ${list.length ? rankRows(list, 3) : `<p class="hint" style="margin:0">Deze maand heeft nog niemand water gegeven. Wie wordt de eerste?</p>`}
+    <button class="btn full" style="margin-top:12px" data-stats>Hele ranglijst</button>
+  </div>`;
+}
+function statsBody() {
+  const c = sheetCtx, range = periodRange(c.type, c.off);
+  const chips = [["week", "Week"], ["maand", "Maand"], ["jaar", "Jaar"], ["alles", "Alles"]]
+    .map(([k, l]) => `<button class="chip-btn${c.type === k ? " on" : ""}" data-stype="${k}" aria-pressed="${c.type === k}">${l}</button>`).join("");
+  const list = (c.data || []).filter(r => r.water || r.voeding);
+  const total = list.reduce((n, r) => n + r.water, 0);
+  return `
+  <div class="chips" role="group" aria-label="Periode">${chips}</div>
+  ${c.type !== "alles" ? `<div class="pnav">
+      <button class="icon-btn" data-soff="-1" aria-label="Vorige periode">‹</button>
+      <b>${esc(range.label)}</b>
+      <button class="icon-btn" data-soff="1" aria-label="Volgende periode" ${c.off >= 0 ? "disabled" : ""}>›</button>
+    </div>` : `<div class="pnav"><b>${esc(range.label)}</b></div>`}
+  ${c.error ? `<div class="err">${esc(c.error)}</div>`
+    : !c.data ? `<p class="status-line">Ranglijst laden…</p>`
+    : list.length ? `<div class="panel">${rankRows(list, 50)}</div><p class="hint">Samen ${total} keer water gegeven.</p>`
+    : `<div class="empty" style="margin-top:14px"><p style="margin:0">In deze periode heeft nog niemand water gegeven.</p></div>`}
+  <p class="hint">De ranglijst telt elke keer dat iemand op Water gegeven of Voeding gegeven tikt. Water dat vóór deze functie is gegeven, telt niet mee.</p>`;
+}
+async function openStats(type = "maand", off = 0) {
+  if (sheetCtx?.mode === "stats") Object.assign(sheetCtx, { type, off, data: null, error: "" });
+  else openSheet({ mode: "stats", type, off, data: null });
+  renderSheet();
+  const c = sheetCtx;
+  try { const d = await loadStats(periodRange(type, off)); if (sheetCtx === c && c.type === type && c.off === off) { c.data = d; renderSheet(); } }
+  catch (e) {
+    if (sheetCtx !== c) return;
+    c.error = e?.code === "PGRST202" || /ingericht/.test(e?.msg || "") ? "De ranglijst is nog niet ingericht. De beheerder moet het nieuwe setup-script uitvoeren in Supabase." : (e?.msg || "Laden lukte niet.");
+    renderSheet();
+  }
+}
+
 async function exportBackup() {
   let data;
   sheetCtx.msg = "Reservekopie maken…"; renderSheet();
@@ -1549,6 +1681,8 @@ async function reload() {
     Object.assign(cloud.cfg, { role: st.role, name: st.name, invite: st.invite, display: st.display });
     store.set("cloud", cloud.cfg).catch(() => {});
     state.members = (await cloud.req(`/rest/v1/members?select=user_id,display_name,role,status,created_at&household_id=eq.${cloud.hid()}&order=created_at`)) || [];
+    state.stats = {};
+    await loadMonthTop();
   } else if (cloud.cfg?.status === "pending") {
     state.members = [];
   }
@@ -1568,17 +1702,32 @@ async function patch(id, fields, msg, undo) {
   try { const p = await api.patch(id, fields); setLocal(p); if (msg) toast(msg, undo); return p; }
   catch (e) { toast(e?.msg || "Opslaan lukte niet."); reload().catch(() => {}); return null; }
 }
+function waterLog(p) {
+  const log = Array.isArray(p.waterLog) ? p.waterLog.filter(e => e && /^\d{4}-\d{2}-\d{2}$/.test(e.d)) : [];
+  if (!log.length && p.lastWatered) log.push({ d: p.lastWatered });
+  return log;
+}
 async function markWater(id) {
   const p = byId(id); if (!p) return;
-  const prev = p.lastWatered ?? null;
-  setLocal({ ...p, lastWatered: todayStr() });
-  await patch(id, { lastWatered: todayStr() }, `${p.label}: water gegeven`, () => patch(id, { lastWatered: prev }));
+  const prev = p.lastWatered ?? null, prevLog = Array.isArray(p.waterLog) ? p.waterLog : null;
+  const t = todayStr();
+  const entry = { d: t, ...(isCloud() && cloud.cfg.display ? { door: cloud.cfg.display } : {}) };
+  const log = [entry, ...waterLog(p).filter(e => e.d !== t)].slice(0, 5);
+  setLocal({ ...p, lastWatered: t, waterLog: log });
+  const q = await patch(id, { lastWatered: t, waterLog: log });
+  if (!q) return;
+  const logId = await logEvent(id, "water");
+  toast(`${p.label}: water gegeven`, () => { unlogEvent(logId); patch(id, { lastWatered: prev, waterLog: prevLog }); });
+  if (logId) loadMonthTop().then(render);
 }
 async function markFeed(id) {
   const p = byId(id); if (!p) return;
   const prev = p.lastFed ?? null;
   setLocal({ ...p, lastFed: todayStr() });
-  await patch(id, { lastFed: todayStr() }, `${p.label}: voeding gegeven`, () => patch(id, { lastFed: prev }));
+  const q = await patch(id, { lastFed: todayStr() });
+  if (!q) return;
+  const logId = await logEvent(id, "voeding");
+  toast(`${p.label}: voeding gegeven`, () => { unlogEvent(logId); patch(id, { lastFed: prev }); });
 }
 async function savePlant() {
   const c = sheetCtx, data = readForm();
@@ -1657,6 +1806,9 @@ document.addEventListener("click", e => {
   if (t.dataset.mDel) { memberAction("del", t.dataset.mDel, nameOf(t.dataset.mDel)); return; }
   if (t.dataset.mAdmin) { memberAction("admin", t.dataset.mAdmin, nameOf(t.dataset.mAdmin)); return; }
   if (t.hasAttribute("data-invite-share")) { shareInvite(); return; }
+  if (t.hasAttribute("data-stats")) { openStats(); return; }
+  if (t.dataset.stype) { openStats(t.dataset.stype, 0); return; }
+  if (t.dataset.soff) { const o = sheetCtx.off + Number(t.dataset.soff); if (o <= 0) openStats(sheetCtx.type, o); return; }
   if (t.hasAttribute("data-push-setup")) { openSheet({ mode: "pushSetup" }); return; }
   if (t.hasAttribute("data-push-connect")) { pushConnect(); return; }
   if (t.hasAttribute("data-push-on")) { pushOn(); return; }

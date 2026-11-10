@@ -195,17 +195,60 @@ begin
   return result;
 end $$;
 
+-- ---------- Logboek voor de ranglijst ----------
+create table if not exists public.waterings (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid not null references public.households on delete cascade,
+  plant_id text not null,
+  user_id uuid references auth.users on delete set null default auth.uid(),
+  display_name text not null check (char_length(display_name) between 1 and 40),
+  kind text not null default 'water' check (kind in ('water', 'voeding')),
+  day date not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists waterings_household_day on public.waterings (household_id, day);
+alter table public.waterings enable row level security;
+
+drop policy if exists waterings_read on public.waterings;
+create policy waterings_read on public.waterings for select to authenticated using (public.is_member(household_id));
+drop policy if exists waterings_add on public.waterings;
+create policy waterings_add on public.waterings for insert to authenticated
+  with check (public.is_member(household_id) and user_id = auth.uid());
+drop policy if exists waterings_undo on public.waterings;
+create policy waterings_undo on public.waterings for delete to authenticated
+  using (user_id = auth.uid() and created_at > now() - interval '1 day');
+
+-- Ranglijst over een periode: per persoon het aantal keer water en voeding.
+create or replace function public.stats(p_household uuid, p_from date, p_to date) returns jsonb
+language sql stable security invoker set search_path = public as $$
+  select coalesce(jsonb_agg(row_to_json(t) order by t.water desc, t.voeding desc, t.name), '[]'::jsonb)
+  from (
+    select w.user_id,
+      coalesce(max(m.display_name), (array_agg(w.display_name order by w.created_at desc))[1]) as name,
+      count(*) filter (where w.kind = 'water')::int as water,
+      count(*) filter (where w.kind = 'voeding')::int as voeding,
+      count(distinct w.plant_id) filter (where w.kind = 'water')::int as planten
+    from waterings w
+    left join members m on m.household_id = w.household_id and m.user_id = w.user_id
+    where w.household_id = p_household and w.day between p_from and p_to and is_member(p_household)
+    group by w.user_id
+  ) t;
+$$;
+
 -- ---------- Rechten ----------
 revoke execute on all functions in schema public from public, anon;
 grant execute on function public.is_member(uuid), public.is_admin(uuid), public.create_household(text, text),
   public.join_household(text, text), public.my_status(uuid), public.approve_member(uuid, uuid),
   public.remove_member(uuid, uuid), public.transfer_admin(uuid, uuid), public.leave_household(uuid),
-  public.new_invite(uuid), public.recover_admin(text, text), public.patch_plant(text, uuid, jsonb, boolean)
+  public.new_invite(uuid), public.recover_admin(text, text), public.patch_plant(text, uuid, jsonb, boolean),
+  public.stats(uuid, date, date)
   to authenticated;
 revoke execute on function public.new_code(int) from authenticated;
 grant usage on schema public to authenticated;
 grant select on public.households, public.members to authenticated;
 grant select, insert, update, delete on public.plants, public.photos to authenticated;
-revoke all on public.households, public.members, public.plants, public.photos from anon;
+grant select, insert, delete on public.waterings to authenticated;
+revoke update on public.waterings from authenticated;
+revoke all on public.households, public.members, public.plants, public.photos, public.waterings from anon;
 revoke all on public.household_secrets from anon, authenticated;
 revoke insert, update, delete on public.households, public.members from anon, authenticated;
