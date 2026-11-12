@@ -1,4 +1,4 @@
--- Plat & Plant: meldingen op een vast tijdstip
+-- Gietgenoten: meldingen op een vast tijdstip
 -- Voer dit uit in Supabase bij SQL Editor, NA supabase-setup.sql.
 -- Het script mag je vaker uitvoeren.
 
@@ -131,8 +131,8 @@ grant execute on function public.setup_push(uuid, text, text, jsonb, text), publ
 -- ---------- Elke 5 minuten controleren ----------
 create extension if not exists pg_net with schema extensions;
 create extension if not exists pg_cron;
-select cron.unschedule(jobid) from cron.job where jobname = 'plat-en-plant-meldingen';
-select cron.schedule('plat-en-plant-meldingen', '*/5 * * * *', $job$
+select cron.unschedule(jobid) from cron.job where jobname in ('plat-en-plant-meldingen', 'gietgenoten-meldingen');
+select cron.schedule('gietgenoten-meldingen', '*/5 * * * *', $job$
   select net.http_post(
     url := c.function_url,
     headers := jsonb_build_object('Content-Type', 'application/json', 'x-plat-secret', c.secret),

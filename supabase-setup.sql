@@ -1,4 +1,4 @@
--- Plat & Plant: inrichting van de gedeelde database
+-- Gietgenoten: inrichting van de gedeelde database
 -- Plak dit hele script in Supabase bij SQL Editor en klik op Run.
 -- Het script mag je vaker uitvoeren; bestaande gegevens blijven staan.
 
@@ -218,22 +218,40 @@ drop policy if exists waterings_undo on public.waterings;
 create policy waterings_undo on public.waterings for delete to authenticated
   using (user_id = auth.uid() and created_at > now() - interval '1 day');
 
--- Ranglijst over een periode: per persoon het aantal keer water en voeding.
+-- Ranglijst over een periode: per persoon (op naam) het aantal keer water en voeding.
+-- Op naam, zodat iemand die opnieuw meedoet (bijvoorbeeld na een nieuw webadres) niet dubbel in de lijst staat.
 create or replace function public.stats(p_household uuid, p_from date, p_to date) returns jsonb
 language sql stable security invoker set search_path = public as $$
-  select coalesce(jsonb_agg(row_to_json(t) order by t.water desc, t.voeding desc, t.name), '[]'::jsonb)
-  from (
-    select w.user_id,
-      coalesce(max(m.display_name), (array_agg(w.display_name order by w.created_at desc))[1]) as name,
-      count(*) filter (where w.kind = 'water')::int as water,
-      count(*) filter (where w.kind = 'voeding')::int as voeding,
-      count(distinct w.plant_id) filter (where w.kind = 'water')::int as planten
+  with w as (
+    select w.*, coalesce(m.display_name, w.display_name) as nm
     from waterings w
     left join members m on m.household_id = w.household_id and m.user_id = w.user_id
     where w.household_id = p_household and w.day between p_from and p_to and is_member(p_household)
-    group by w.user_id
+  )
+  select coalesce(jsonb_agg(row_to_json(t) order by t.water desc, t.voeding desc, t.name), '[]'::jsonb)
+  from (
+    select (array_agg(user_id order by created_at desc))[1] as user_id,
+      (array_agg(nm order by created_at desc))[1] as name,
+      count(*) filter (where kind = 'water')::int as water,
+      count(*) filter (where kind = 'voeding')::int as voeding,
+      count(distinct plant_id) filter (where kind = 'water')::int as planten
+    from w
+    group by lower(trim(nm))
   ) t;
 $$;
+
+-- ---------- Planten die nog in de lijst ontbreken ----------
+create table if not exists public.plant_requests (
+  id uuid primary key default gen_random_uuid(),
+  household_id uuid references public.households on delete set null,
+  name text not null check (char_length(name) between 1 and 60),
+  created_at timestamptz not null default now()
+);
+alter table public.plant_requests enable row level security;
+drop policy if exists plant_requests_add on public.plant_requests;
+create policy plant_requests_add on public.plant_requests for insert to authenticated
+  with check (public.is_member(household_id));
+-- Bewust geen leesregel: alleen de beheerder van het project ziet de verzoeken, in het Supabase-dashboard (Table Editor, plant_requests).
 
 -- ---------- Rechten ----------
 revoke execute on all functions in schema public from public, anon;
@@ -248,6 +266,8 @@ grant usage on schema public to authenticated;
 grant select on public.households, public.members to authenticated;
 grant select, insert, update, delete on public.plants, public.photos to authenticated;
 grant select, insert, delete on public.waterings to authenticated;
+grant insert on public.plant_requests to authenticated;
+revoke all on public.plant_requests from anon;
 revoke update on public.waterings from authenticated;
 revoke all on public.households, public.members, public.plants, public.photos, public.waterings from anon;
 revoke all on public.household_secrets from anon, authenticated;

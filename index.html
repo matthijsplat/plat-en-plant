@@ -66,7 +66,7 @@ h2 .count{color:var(--muted);font-weight:400}
 .thumb{width:64px;height:64px;border-radius:12px;object-fit:cover;flex:none;background:var(--sunk)}
 .thumb.ph{display:grid;place-items:center;color:var(--muted)}
 .row .info{flex:1;min-width:0;cursor:pointer;background:none;border:0;padding:0;text-align:left}
-.row .name{font-weight:600;font-size:18px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.row .name{font-weight:600;font-size:18px;line-height:1.2;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:break-word;hyphens:auto}
 .row .meta{color:var(--muted);font-size:14.5px;margin-top:2px}
 .row .when{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:14.5px}
 .row .when.late{color:var(--warn);font-weight:600}
@@ -214,6 +214,11 @@ label.f textarea{min-height:76px;resize:vertical}
 .pnav b{font-size:19px;flex:1;text-align:center}
 .pnav .icon-btn{font-size:24px;line-height:1}
 .pnav .icon-btn:disabled{opacity:.35}
+
+.probs{list-style:none;padding:0;margin:4px 0 0}
+.probs li{padding:8px 0;border-top:1px solid var(--line);font-size:15px}
+.probs li:first-child{border-top:0}
+.probs b{display:block;font-weight:600;font-size:14px;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -264,7 +269,7 @@ const store = {
   db: null,
   open() {
     return new Promise((res, rej) => {
-      const r = indexedDB.open("platplant", 2);
+      const r = indexedDB.open("platplant", 2); // interne naam uit de eerste versie: niet wijzigen, anders verdwijnen de gegevens op de telefoon
       r.onupgradeneeded = () => {
         const d = r.result;
         if (!d.objectStoreNames.contains("plants")) d.createObjectStore("plants", { keyPath: "id" });
@@ -507,9 +512,11 @@ function intervalFor(p, s = season()) {
   return Math.round((g + r) / 2);
 }
 function amountFor(p, s = season()) {
+  if (num(p.waterMl, 200) === 0) return 0;
   const ml = clamp(num(p.waterMl, 200), 10, 5000);
   return s === "rust" ? Math.max(10, Math.round(ml * 0.8 / 10) * 10) : ml;
 }
+const amountText = p => amountFor(p) ? `${amountFor(p)} ml` : "dompelen";
 function waterStatus(p) {
   const iv = intervalFor(p), t = todayStr();
   if (!p.lastWatered) return { daysLeft: 0, iv, next: t, never: true };
@@ -570,6 +577,7 @@ function findByName(q) {
   return scored.sort((a, b) => b.score - a.score).slice(0, 5).map(x => x.e);
 }
 function scaleMl(base, pot) {
+  if (base === 0) return 0;
   const p = clamp(num(pot, 14), 5, 80);
   return clamp(Math.round(base * Math.pow(p / 14, 2) / 10) * 10, 20, 4000);
 }
@@ -578,8 +586,15 @@ function dataFromEntry(e, ctx, extra = {}) {
     label: ctx.label || e.n, naam: e.n, soort: extra.soort || "", kamer: ctx.room, pot: ctx.pot ? num(ctx.pot, null) : null,
     waterGroeiDagen: e.g, waterRustDagen: e.r, waterMl: scaleMl(e.ml, ctx.pot), waterTip: e.wt,
     voedingWeken: e.v, voedingTip: e.vt, licht: e.l, vochtigheid: e.h, giftig: e.t, verzorging: e.c,
-    over: extra.over || "", bron: extra.bron || ""
+    over: extra.over || "", bron: extra.bron || "", soortKey: e.k[0]
   };
+}
+/* Find the built-in entry that belongs to a plant, also for plants added before soortKey existed */
+function entryFor(p) {
+  if (!p) return null;
+  if (p.soortKey) { const e = DB.find(x => x.k[0] === p.soortKey); if (e) return e; }
+  const n = norm(p.naam);
+  return (n && DB.find(e => [e.n, ...e.a, ...e.k].some(w => norm(w) === n))) || (p.soort ? findBySci(p.soort) : null) || null;
 }
 function genericData(ctx, extra = {}) {
   return {
@@ -627,7 +642,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "10 november 2026 (Gietgenoten)";
+const APP_VERSIE = "11 november 2026 (113 planten)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -686,7 +701,7 @@ function rowDue({ p, st, fd }) {
       <div class="meta">${esc(p.kamer || p.naam || "")}</div>
       <div class="when ${cls}">${gauge(st,14)} ${whenText(st)}${fd?.due ? '<span class="chip">+ voeding</span>' : ""}</div>
     </button>
-    <button class="water-btn" data-water="${esc(p.id)}" aria-label="${esc(p.label)}: water gegeven">${amountFor(p)} ml<small>Gegeven</small></button>
+    <button class="water-btn" data-water="${esc(p.id)}" aria-label="${esc(p.label)}: water gegeven">${amountText(p)}<small>Gegeven</small></button>
   </div>`;
 }
 function rowFeed({ p }) {
@@ -696,7 +711,7 @@ function rowFeed({ p }) {
 }
 function rowSoon({ p, st }) {
   return `<div class="row">${thumb(p)}
-    <button class="info" data-open="${esc(p.id)}"><div class="name">${esc(p.label)}</div><div class="when">${gauge(st,14)} ${whenText(st)}, ${amountFor(p)} ml</div></button></div>`;
+    <button class="info" data-open="${esc(p.id)}"><div class="name">${esc(p.label)}</div><div class="when">${gauge(st,14)} ${whenText(st)}, ${amountText(p)}</div></button></div>`;
 }
 function plantsView() {
   let html = `<header class="top"><h1>Planten</h1><p class="date">${state.plants.length} ${state.plants.length === 1 ? "plant" : "planten"} in huis</p></header>`;
@@ -762,6 +777,12 @@ function waterHistory(p) {
   }
   return h;
 }
+function knownProblems(p) {
+  const ent = entryFor(p);
+  if (!ent?.p?.length) return "";
+  const label = id => (SYMPTOMS.find(([k]) => k === id) || [, id])[1];
+  return `<div class="panel"><h4>Bekende problemen</h4><ul class="probs">${ent.p.map(([sym, tip]) => `<li><b>${esc(label(sym))}</b><span>${esc(tip)}</span></li>`).join("")}</ul></div>`;
+}
 function detailBody(p) {
   const st = waterStatus(p), fd = feedStatus(p), s = season(), src = photoSrc(p), h = p.gezondheid, fw = num(p.voedingWeken, 0);
   return `
@@ -774,7 +795,7 @@ function detailBody(p) {
   </div>
   <div class="panel">
     <h4>Water</h4>
-    <div class="big-now">${gauge(st,30)}<div><div class="n">${amountFor(p)} ml</div><div class="u">elke ${st.iv} dagen in deze periode</div></div></div>
+    <div class="big-now">${gauge(st,30)}<div><div class="n">${amountText(p)}</div><div class="u">elke ${st.iv} dagen in deze periode</div></div></div>
     <dl class="facts">
       <dt>Volgende keer</dt><dd class="${st.daysLeft < 0 ? "warn-line" : ""}">${whenText(st)}${st.never ? "" : " (" + esc(fmtDate(st.next)) + ")"}</dd>
       ${waterHistory(p)}
@@ -807,6 +828,7 @@ function detailBody(p) {
     ${p.verzorging ? `<p style="margin-top:10px">${esc(p.verzorging)}</p>` : ""}
     ${p.over ? `<p class="hint" style="margin-top:10px">${esc(p.over)}${p.bron ? ` (bron: ${esc(p.bron)})` : ""}</p>` : ""}
   </div>
+  ${knownProblems(p)}
   <div class="actions">
     <button class="btn" data-edit="${esc(p.id)}">Bewerken</button>
     <button class="btn danger" data-del="${esc(p.id)}">Verwijderen</button>
@@ -830,11 +852,9 @@ function addBody() {
   <datalist id="roomList">${rooms().map(r => `<option value="${esc(r)}">`).join("")}</datalist>
 
   <h2 style="margin-top:26px">Welke plant is het?</h2>
-  ${hasKey ? `<button class="btn leaf full" data-identify ${c.blob && !c.busy ? "" : "disabled"}>Herken via de foto</button>
-     ${!c.blob ? `<p class="hint">Maak eerst een foto.</p>` : ""}`
-   : `<p class="hint">Herkennen via een foto kan als je een gratis Pl@ntNet-sleutel invult bij <button class="linkish" data-settings>Instellingen</button>. Je kunt ook de naam typen.</p>`}
+  <p class="hint">Weet je niet hoe je plant heet? Gebruik Google Lens op Android, of open de foto in de Foto’s-app van je iPhone en tik op het i-icoon met het blaadje. Typ daarna de naam hieronder.</p>
   <div class="search-row">
-    <label class="f" style="flex:1;margin-top:12px">Of typ de naam<input id="aName" value="${esc(c.name||"")}" placeholder="Bijv. monstera, vrouwentong" list="dbList" autocomplete="off" enterkeyhint="search"></label>
+    <label class="f" style="flex:1;margin-top:12px">Naam van de plant<input id="aName" value="${esc(c.name||"")}" placeholder="Bijv. monstera, vrouwentong" list="dbList" autocomplete="off" enterkeyhint="search"></label>
     <button class="btn" data-namesearch ${c.busy ? "disabled" : ""}>Zoek</button>
   </div>
   <datalist id="dbList">${DB.map(e => `<option value="${esc(e.n)}">`).join("")}</datalist>
@@ -878,8 +898,9 @@ function nameSearch() {
   if (!c.name) { c.error = "Typ eerst een naam."; renderSheet(); return; }
   const hits = findByName(c.name);
   c.cands = hits.map(e => ({ kind: "db", e, title: e.n, sub: "Uit de ingebouwde plantenlijst" }));
-  c.cands.push({ kind: "wiki", q: c.name, title: `Zoek “${c.name}” online op`, sub: "Via Wikipedia, met standaard water-advies" });
-  c.candNote = hits.length ? "Kies de plant die het best past:" : "Deze plant staat niet in de ingebouwde lijst.";
+  c.cands.push({ kind: "wiki", q: c.name, title: hits.length ? "Mijn plant staat er niet tussen" : `Verder met “${c.name}”`,
+    sub: isCloud() ? "We geven de naam door, zodat hij aan de lijst kan worden toegevoegd" : "Met algemene informatie en standaard water-advies" });
+  c.candNote = hits.length ? "Kies de plant die het best past:" : "Deze plant staat nog niet in de lijst.";
   renderSheet();
 }
 
@@ -889,7 +910,8 @@ async function chooseCand(i) {
   if (!x) return;
   if (x.e && x.kind === "db") { goForm(dataFromEntry(x.e, c), ""); return; }
   if (x.e && x.kind === "pn") { goForm(dataFromEntry(x.e, c, { soort: x.r.species, bron: "Pl@ntNet" }), ""); return; }
-  // Unknown: look it up online
+  // Unknown: pass the name on to the maker and look it up online
+  if (x.kind === "wiki" && isCloud()) cloud.req("/rest/v1/plant_requests", { method: "POST", prefer: "return=minimal", body: { household_id: cloud.cfg.household, name: x.q.slice(0, 60) } }).catch(() => {});
   const q = x.kind === "pn" ? x.r.species : x.q;
   c.busy = "Informatie opzoeken op Wikipedia…"; c.error = ""; renderSheet();
   abortCtl = new AbortController();
@@ -917,7 +939,7 @@ function formBody() {
   <div class="two">${f("fKamer","Kamer",d.kamer,'list="roomList2"')}${f("fPot","Potdiameter (cm)",d.pot,'inputmode="numeric"')}</div>
   <datalist id="roomList2">${rooms().map(r => `<option value="${esc(r)}">`).join("")}</datalist>
   <div class="two">${f("fGroei","Water elke … dagen (zomer)",d.waterGroeiDagen,'inputmode="numeric"')}${f("fRust","Water elke … dagen (winter)",d.waterRustDagen,'inputmode="numeric"')}</div>
-  ${f("fMl","Hoeveelheid per keer (ml)",d.waterMl,'inputmode="numeric"')}
+  ${f("fMl","Hoeveelheid per keer (ml, 0 = dompelen)",d.waterMl,'inputmode="numeric"')}
   <label class="f">Tip voor water geven<textarea id="fWaterTip">${esc(d.waterTip)}</textarea></label>
   ${f("fVoeding","Voeding elke … weken (0 = geen)",d.voedingWeken,'inputmode="numeric"')}
   <label class="f">Tip voor voeding<textarea id="fVoedingTip">${esc(d.voedingTip)}</textarea></label>
@@ -938,7 +960,7 @@ function readForm() {
     naam: v("fNaam"), soort: v("fSoort"), kamer: v("fKamer"),
     pot: v("fPot") ? n("fPot", null, 3, 150) : null,
     waterGroeiDagen: groei, waterRustDagen: n("fRust", groei * 2, 1, 90),
-    waterMl: n("fMl", 200, 10, 5000), waterTip: v("fWaterTip"),
+    waterMl: n("fMl", 200, 0, 5000), waterTip: v("fWaterTip"),
     voedingWeken: n("fVoeding", 0, 0, 26), voedingTip: v("fVoedingTip"),
     licht: v("fLicht"), vochtigheid: v("fVocht"), verzorging: v("fVerz"),
     giftig: !!$("#fGiftig")?.checked
@@ -1053,7 +1075,10 @@ function diagnose(p, sel, grond) {
   }
   if (!grond && !teNat && !teDroog && (has("slap") || has("krul"))) sug.push("Voel met je vinger 3 cm diep in de grond. Nat wijst op te veel water, droog op te weinig.");
   if (!dx.length) dx.push("Houd de plant de komende weken goed in de gaten.");
-  const uniq = [...new Set(sug)].slice(0, 7);
+  const ent = entryFor(p);
+  const specific = (ent?.p || []).filter(([sym]) => sel[sym]).map(([, tip]) => tip);
+  if (specific.length) dx.unshift(`Dit is een bekend probleem bij de ${ent.n.replace(/ \(.*\)$/, "").toLowerCase()}.`);
+  const uniq = [...new Set([...specific, ...sug])].slice(0, 8);
   return { status, samenvatting: dx.join(" "), suggesties: uniq, ritme, datum: todayStr() };
 }
 
@@ -1063,12 +1088,6 @@ function settingsBody() {
   return `
   ${sharePanel()}
   ${notifPanel()}
-  <div class="panel">
-    <h4>Herkennen via foto (optioneel)</h4>
-    <p>Met een gratis Pl@ntNet-sleutel kan de app planten op een foto herkennen. Zonder sleutel typ je de naam.</p>
-    <label class="f">Pl@ntNet-sleutel<input id="sKey" value="${esc(state.key)}" placeholder="Leeg laten als je geen sleutel hebt" autocomplete="off" spellcheck="false"></label>
-    <button class="btn full" style="margin-top:10px" data-savekey>Sleutel opslaan</button>
-  </div>
   <div class="panel">
     <h4>Reservekopie</h4>
     <p>${isCloud() ? "Maak een kopie van de gedeelde lijst, met foto’s." : "Alle planten en foto’s staan alleen op deze telefoon. Maak af en toe een reservekopie, bijvoorbeeld naar Google Drive."}</p>
@@ -1641,7 +1660,7 @@ async function exportBackup() {
 async function importBackup(file) {
   try {
     const j = JSON.parse(await file.text());
-    if (!["plat-en-plant", "gietgenoten"].includes(j?.app) || !Array.isArray(j.planten)) throw 0;
+    if (!["plat-en-plant", "gietgenoten"].includes(j?.app) /* plat-en-plant: reservekopieën uit de eerste versie */ || !Array.isArray(j.planten)) throw 0;
     if (!confirm(`Reservekopie met ${j.planten.length} planten terugzetten? De planten die nu in de ${isCloud() ? "gedeelde lijst" : "app"} staan worden vervangen${isCloud() ? ", ook voor je huisgenoten" : ""}.`)) return;
     sheetCtx.msg = "Bezig met terugzetten…"; renderSheet();
     const r = await api.importAll(j.planten);

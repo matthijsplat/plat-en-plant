@@ -1,4 +1,4 @@
-const CACHE = "gietgenoten-v6";
+const CACHE = "gietgenoten-v7";
 const FILES = ["./", "./index.html", "./planten-db.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
@@ -20,7 +20,7 @@ self.addEventListener("fetch", e => {
 /* ---------- daily check in the background ---------- */
 function openDb() {
   return new Promise((res, rej) => {
-    const r = indexedDB.open("platplant");
+    const r = indexedDB.open("platplant"); // interne naam uit de eerste versie: niet wijzigen
     r.onupgradeneeded = () => {
       const d = r.result;
       if (!d.objectStoreNames.contains("plants")) d.createObjectStore("plants", { keyPath: "id" });
@@ -94,6 +94,7 @@ async function checkPlants() {
   db.close();
 }
 function amountFor(p, s) {
+  if (num(p.waterMl, 200) === 0) return 0;
   const ml = Math.min(5000, Math.max(10, num(p.waterMl, 200)));
   return s === "rust" ? Math.max(10, Math.round(ml * 0.8 / 10) * 10) : ml;
 }
@@ -109,7 +110,7 @@ function dueMessage(plants, now) {
   const s = season(now);
   const water = plants.filter(p => needsWater(p, now, s));
   const foodOnly = plants.filter(p => !needsWater(p, now, s) && needsFood(p, now, s));
-  const lines = water.map(p => `${p.label || "Plant"}: ${amountFor(p, s)} ml water${needsFood(p, now, s) ? " + voeding" : ""}`);
+  const lines = water.map(p => `${p.label || "Plant"}: ${amountFor(p, s) ? `${amountFor(p, s)} ml water` : "dompelen"}${needsFood(p, now, s) ? " + voeding" : ""}`);
   const shown = lines.slice(0, 7);
   if (lines.length > 7) shown.push(`en nog ${lines.length - 7} andere`);
   if (foodOnly.length) shown.push(`Voeding bij de volgende waterbeurt: ${namesText(foodOnly.map(p => p.label || "Plant"))}`);

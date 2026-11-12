@@ -1,4 +1,4 @@
-// Plat & Plant: verstuurt elke paar minuten de meldingen die op dit moment aan de beurt zijn.
+// Gietgenoten: verstuurt elke paar minuten de meldingen die op dit moment aan de beurt zijn.
 // Plak deze code in Supabase bij Edge Functions, met als naam: plat-push
 import postgres from "npm:postgres@3.4.5";
 
