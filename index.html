@@ -642,7 +642,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "11 november 2026 (113 planten)";
+const APP_VERSIE = "12 november 2026 (seizoen onderaan)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -677,7 +677,7 @@ function topBanners() {
 }
 function todayView() {
   const dateStr = new Date().toLocaleDateString("nl-NL", { weekday:"long", day:"numeric", month:"long" });
-  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p>${isCloud() ? `<p class="listname">${esc(cloud.cfg.name)}</p>` : ""}</header>${topBanners()}${seasonBlock()}`;
+  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p>${isCloud() ? `<p class="listname">${esc(cloud.cfg.name)}</p>` : ""}</header>${topBanners()}`;
   if (!state.plants.length) {
     return html + `<div class="empty">${LEAF_SVG}<h2 style="margin:8px 0 0">Nog geen planten</h2><p>Maak een foto van jullie eerste plant en geef hem een label. De app zoekt op hoeveel water hij nodig heeft.</p><button class="btn leaf" style="margin:0 auto" data-act="add">Eerste plant toevoegen</button></div>`;
   }
@@ -690,6 +690,7 @@ function todayView() {
   if (feedOnly.length) html += `<h2>Voeding geven</h2>` + feedOnly.map(rowFeed).join("");
   if (soon.length) html += `<h2>Binnenkort</h2>` + soon.map(rowSoon).join("");
   html += rankCard();
+  html += `<div style="margin-top:30px">${seasonBlock()}</div>`;
   return html;
 }
 function rowDue({ p, st, fd }) {
