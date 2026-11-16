@@ -28,6 +28,23 @@ create table if not exists public.members (
 );
 create unique index if not exists one_admin_per_household on public.members (household_id) where role = 'admin';
 
+-- Voorbereiding op betalen: wie de lijst maakte, tot wanneer de proefperiode loopt en wanneer hij is ontgrendeld.
+-- In de proefversie wordt elke lijst direct ontgrendeld.
+alter table public.households add column if not exists created_by uuid references auth.users on delete set null;
+alter table public.households add column if not exists trial_ends date;
+alter table public.households add column if not exists unlocked_at timestamptz;
+
+-- Aankopen per persoon: elke aankoop geeft plekken voor lijsten waarvan je beheerder bent (standaard 2).
+create table if not exists public.purchases (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users on delete cascade,
+  slots int not null default 2 check (slots between 1 and 10),
+  amount_cents int,
+  payment_ref text,
+  created_at timestamptz not null default now()
+);
+alter table public.purchases enable row level security;
+
 create table if not exists public.plants (
   id text primary key check (id ~ '^[a-z0-9]{6,40}$'),
   household_id uuid not null references public.households on delete cascade,
@@ -91,10 +108,15 @@ language plpgsql security definer set search_path = public, extensions as $$
 declare h uuid; inv text; rec text; nm text := left(trim(p_name), 60); me text := left(trim(p_display), 40);
 begin
   if auth.uid() is null then raise exception 'not_signed_in'; end if;
-  if exists (select 1 from households) then raise exception 'household_exists'; end if;
+  -- Proefversie: de eerste lijst mag iedereen maken; daarna alleen een beheerder van een bestaande lijst.
+  if exists (select 1 from households)
+     and not exists (select 1 from members where user_id = auth.uid() and role = 'admin' and status = 'active') then
+    raise exception 'not_allowed';
+  end if;
   if nm = '' or me = '' then raise exception 'empty_name'; end if;
   inv := new_code(8); rec := new_code(16);
-  insert into households (name, invite_code) values (nm, inv) returning id into h;
+  insert into households (name, invite_code, created_by, trial_ends, unlocked_at)
+    values (nm, inv, auth.uid(), current_date + 14, now()) returning id into h;
   insert into household_secrets values (h, crypt(rec, gen_salt('bf')));
   insert into members (household_id, user_id, display_name, role, status) values (h, auth.uid(), me, 'admin', 'active');
   return jsonb_build_object('household', h, 'name', nm, 'invite', inv,
@@ -181,6 +203,15 @@ begin
   return jsonb_build_object('household', h.id, 'name', h.name, 'invite', h.invite_code);
 end $$;
 
+-- Alle lijsten waar deze persoon bij hoort, ook aanvragen die nog niet zijn geaccepteerd.
+create or replace function public.my_lists() returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object('household', h.id, 'name', h.name, 'role', m.role, 'status', m.status,
+           'display', m.display_name, 'invite', case when m.status = 'active' then h.invite_code end) order by m.created_at), '[]'::jsonb)
+  from members m join households h on h.id = m.household_id
+  where m.user_id = auth.uid();
+$$;
+
 -- Plant bijwerken zonder wijzigingen van een huisgenoot te overschrijven.
 create or replace function public.patch_plant(p_id text, p_household uuid, p_fields jsonb, p_create boolean default false) returns jsonb
 language plpgsql security invoker set search_path = public as $$
@@ -259,7 +290,7 @@ grant execute on function public.is_member(uuid), public.is_admin(uuid), public.
   public.join_household(text, text), public.my_status(uuid), public.approve_member(uuid, uuid),
   public.remove_member(uuid, uuid), public.transfer_admin(uuid, uuid), public.leave_household(uuid),
   public.new_invite(uuid), public.recover_admin(text, text), public.patch_plant(text, uuid, jsonb, boolean),
-  public.stats(uuid, date, date)
+  public.stats(uuid, date, date), public.my_lists()
   to authenticated;
 revoke execute on function public.new_code(int) from authenticated;
 grant usage on schema public to authenticated;
@@ -271,4 +302,8 @@ revoke all on public.plant_requests from anon;
 revoke update on public.waterings from authenticated;
 revoke all on public.households, public.members, public.plants, public.photos, public.waterings from anon;
 revoke all on public.household_secrets from anon, authenticated;
+revoke all on public.purchases from anon, authenticated;
+grant select on public.purchases to authenticated;
+drop policy if exists purchases_own on public.purchases;
+create policy purchases_own on public.purchases for select to authenticated using (user_id = auth.uid());
 revoke insert, update, delete on public.households, public.members from anon, authenticated;

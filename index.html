@@ -219,6 +219,10 @@ label.f textarea{min-height:76px;resize:vertical}
 .probs li{padding:8px 0;border-top:1px solid var(--line);font-size:15px}
 .probs li:first-child{border-top:0}
 .probs b{display:block;font-weight:600;font-size:14px;color:var(--muted)}
+
+.listswitch{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--leaf);font-weight:700;font-size:16px;border-radius:99px;padding:7px 14px}
+.listrow.on{border-color:var(--leaf);background:var(--leaf-soft)}
+.listrow:disabled{opacity:.7}
 </style>
 </head>
 <body>
@@ -297,7 +301,7 @@ const store = {
   get(k) { return this.req("settings", "readonly", s => s.get(k)); },
   set(k, v) { return this.req("settings", "readwrite", s => s.put(v, k)); },
   photoAll() { return this.req("photos", "readonly", s => s.getAll()); },
-  photoPut(id, v, data) { return this.req("photos", "readwrite", s => s.put({ id, v, data })); },
+  photoPut(id, v, data, h) { return this.req("photos", "readwrite", s => s.put({ id, v, data, h })); },
   photoDel(id) { return this.req("photos", "readwrite", s => s.delete(id)); }
 };
 
@@ -329,6 +333,7 @@ const DB_ERRORS = {
   not_admin: "Alleen de beheerder kan dit doen.",
   bad_code: "Deze uitnodiging werkt niet meer. Vraag de beheerder om een nieuwe link.",
   bad_recovery: "Deze herstelcode klopt niet.",
+  not_allowed: "Alleen een beheerder van een bestaande lijst kan in deze database een nieuwe lijst aanmaken. Doe mee via een uitnodigingslink.",
   household_exists: "In deze database bestaat al een lijst. Gebruik de uitnodigingslink om mee te doen, of herstel je beheerdersrol met je herstelcode.",
   admin_cannot_leave: "Als beheerder kun je de lijst niet verlaten. Maak eerst iemand anders beheerder.",
   cannot_remove_self: "Je kunt jezelf niet verwijderen.",
@@ -354,13 +359,48 @@ function authErr(j) {
   return "Inloggen bij de database lukte niet. Controleer de gegevens en probeer het opnieuw.";
 }
 const cloud = {
-  cfg: null, // { url, key, household, name, display, role, status, invite, session }
-  async saveCfg() { await store.set("cloud", this.cfg); },
+  /* lists: every shared list this phone takes part in; sessions: one login per database (by url) */
+  st: { lists: [], sessions: {} },
+  _active: null,
+  get cfg() { return this._active; },
+  set cfg(v) {
+    // A list without household is a temporary entry from a create or join attempt: drop it when switching away.
+    const cur = this._active;
+    if (cur && !cur.household && cur !== v) this.st.lists = this.st.lists.filter(l => l !== cur);
+    if (v === null) {
+      if (cur && cur.household) this.st.lists = this.st.lists.filter(l => l !== cur);
+      this._active = this.st.lists.find(l => l.status === "active") || null;
+      return;
+    }
+    if (!this.st.lists.includes(v)) this.st.lists.push(v);
+    this._active = v;
+  },
+  get session() { return this._active ? this.st.sessions[this._active.url] || null : null; },
+  /* Go back to an earlier list (or to "only this phone" with null) and drop any temporary entry */
+  restore(v) {
+    const cur = this._active;
+    if (cur && !cur.household) this.st.lists = this.st.lists.filter(l => l !== cur);
+    this._active = v && this.st.lists.includes(v) ? v : null;
+  },
+  adminBase() { return this.st.lists.find(l => l.household && l.role === "admin" && l.status === "active") || null; },
+  async load() {
+    let s = await store.get("cloud").catch(() => null);
+    if (s && !s.lists && s.url) { // first shared version: one list with its own session
+      const { session, ...l } = s;
+      s = { lists: l.household ? [l] : [], sessions: session ? { [l.url]: session } : {}, active: 0 };
+    }
+    this.st = { lists: s?.lists || [], sessions: s?.sessions || {} };
+    this._active = (typeof s?.active === "number" && this.st.lists[s.active]) || null;
+  },
+  async saveCfg() {
+    await store.set("cloud", { lists: this.st.lists, sessions: this.st.sessions, active: this.st.lists.indexOf(this._active) });
+  },
   setSession(j) {
-    this.cfg.session = {
+    const url = this.cfg.url, old = this.st.sessions[url];
+    this.st.sessions[url] = {
       access_token: j.access_token, refresh_token: j.refresh_token,
       expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600),
-      user_id: j.user?.id || this.cfg.session?.user_id || null
+      user_id: j.user?.id || old?.user_id || null
     };
   },
   async signIn() {
@@ -374,14 +414,16 @@ const cloud = {
     await this.saveCfg();
   },
   async token() {
+    const url = this.cfg.url;
     const saved = await store.get("cloud").catch(() => null);
-    if (saved?.session && saved.url === this.cfg.url && (saved.session.expires_at || 0) > (this.cfg.session?.expires_at || 0)) this.cfg.session = saved.session;
-    const s = this.cfg.session;
+    const sv = saved?.sessions?.[url];
+    if (sv && (sv.expires_at || 0) > (this.st.sessions[url]?.expires_at || 0)) this.st.sessions[url] = sv; // refreshed by the service worker
+    const s = this.st.sessions[url];
     if (!s) throw { msg: "Je bent niet ingelogd bij de gedeelde lijst." };
     if (s.expires_at - 60 > Date.now() / 1000) return s.access_token;
     let r;
     try {
-      r = await fetch(this.cfg.url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: this.cfg.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
+      r = await fetch(url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: this.cfg.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
     } catch { throw { msg: "Geen verbinding met de database. Controleer je internet.", offline: true }; }
     const j = await r.json().catch(() => null);
     if (!r.ok || !j?.access_token) throw { msg: "Je inlog is verlopen. Vraag opnieuw toegang via de uitnodigingslink.", auth: true };
@@ -405,11 +447,33 @@ const cloud = {
     return j;
   },
   rpc(fn, args) { return this.req("/rest/v1/rpc/" + fn, { method: "POST", body: args || {} }); },
+  /* Bring all lists of this phone up to date (status, role, name); reports lists that were just accepted */
+  async syncLists() {
+    const accepted = [], prev = this._active;
+    for (const url of [...new Set(this.st.lists.filter(l => l.household).map(l => l.url))]) {
+      const any = this.st.lists.find(l => l.url === url && l.household);
+      this._active = any;
+      let rows;
+      try { rows = await this.rpc("my_lists", {}); } catch (e) { this._active = prev; if (e?.code === "PGRST202") return accepted; throw e; }
+      for (const l of this.st.lists.filter(x => x.url === url && x.household)) {
+        const r = (rows || []).find(x => x.household === l.household);
+        if (!r) { l.gone = true; continue; }
+        if (l.status === "pending" && r.status === "active") accepted.push(l);
+        Object.assign(l, { name: r.name, role: r.role, status: r.status, display: r.display, invite: r.invite });
+      }
+    }
+    this._active = prev;
+    const gone = this.st.lists.filter(l => l.gone);
+    this.st.lists = this.st.lists.filter(l => !l.gone);
+    if (prev?.gone) this._active = this.st.lists.find(l => l.status === "active") || null;
+    await this.saveCfg();
+    return { accepted, gone, lostActive: !!prev?.gone };
+  },
   hid() { return encodeURIComponent(this.cfg.household); },
   async list() {
     const rows = await this.req(`/rest/v1/plants?select=id,data&household_id=eq.${this.hid()}`);
     const plants = (rows || []).map(r => ({ ...(r.data || {}), id: r.id }));
-    store.set("cloudCache", plants).catch(() => {});
+    store.set("cloudCache:" + this.cfg.household, plants).catch(() => {});
     this.syncPhotos().catch(() => {});
     return plants;
   },
@@ -418,11 +482,11 @@ const cloud = {
     const cached = (await store.photoAll()) || [];
     const have = new Map(cached.map(c => [c.id, c.v]));
     const want = new Set(rows.map(r => r.plant_id));
-    for (const c of cached) if (!want.has(c.id)) { await store.photoDel(c.id); delete state.photoCache[c.id]; }
+    for (const c of cached) if ((!c.h || c.h === this.cfg.household) && !want.has(c.id)) { await store.photoDel(c.id); delete state.photoCache[c.id]; }
     const stale = rows.filter(r => have.get(r.plant_id) !== r.version).map(r => r.plant_id).filter(id => /^[a-z0-9]{6,40}$/.test(id));
     for (let i = 0; i < stale.length; i += 4) {
       const got = (await this.req(`/rest/v1/photos?select=plant_id,data,version&plant_id=in.(${stale.slice(i, i + 4).join(",")})`)) || [];
-      for (const g of got) if (safeImg(g.data)) { await store.photoPut(g.plant_id, g.version, g.data); state.photoCache[g.plant_id] = g.data; }
+      for (const g of got) if (safeImg(g.data)) { await store.photoPut(g.plant_id, g.version, g.data, this.cfg.household); state.photoCache[g.plant_id] = g.data; }
     }
     if (stale.length) { render(); if (sheetCtx?.mode === "detail") renderSheet(); }
   },
@@ -432,7 +496,7 @@ const cloud = {
     if (foto && safeImg(foto)) {
       const v = Date.now();
       await this.req("/rest/v1/photos?on_conflict=plant_id", { method: "POST", prefer: "resolution=merge-duplicates,return=minimal", body: { plant_id: id, household_id: this.cfg.household, data: foto, version: v } });
-      await store.photoPut(id, v, foto);
+      await store.photoPut(id, v, foto, this.cfg.household);
       state.photoCache[id] = foto;
     }
     return { ...(data || {}), id };
@@ -642,7 +706,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "12 november 2026 (seizoen onderaan)";
+const APP_VERSIE = "16 november 2026 (meerdere lijsten)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -665,10 +729,37 @@ function seasonBlock() {
   const [t, d] = SEASON_TEXT[season()];
   return `<div class="season">${LEAF_SVG.replace('width="28" height="28"','width="22" height="22"')}<div><b>${t}</b><p>${d}</p></div></div>`;
 }
+function listSwitch() {
+  if (!cloud.st.lists.some(l => l.household)) return "";
+  const name = cloud.cfg?.household ? cloud.cfg.name : "Op deze telefoon";
+  return `<button class="listswitch" data-lists aria-label="Lijst kiezen, nu: ${esc(name)}">${esc(name)} <span aria-hidden="true">▾</span></button>`;
+}
+function listsBody() {
+  const rows = cloud.st.lists.map((l, i) => !l.household ? "" : `<button class="cand listrow${l === cloud.cfg ? " on" : ""}" data-pick="${i}" ${l.status !== "active" ? "disabled" : ""}>
+      <b>${esc(l.name)}</b><span>${l.status !== "active" ? "Wacht op goedkeuring" : l.role === "admin" ? "Beheerder" : "Lid"}${l === cloud.cfg ? ", nu geopend" : ""}</span></button>`).join("");
+  return `
+  <p style="margin-top:4px">Kies welke lijst je wilt zien. Water geven, meldingen en de ranglijst horen steeds bij de gekozen lijst.</p>
+  ${rows}
+  <button class="cand listrow${!cloud.cfg?.household ? " on" : ""}" data-pick="local"><b>Op deze telefoon</b><span>Alleen voor jezelf, zonder te delen${!cloud.cfg?.household ? ", nu geopend" : ""}</span></button>
+  <button class="btn leaf full" style="margin-top:18px" data-cloud-create>Nieuwe lijst maken</button>
+  <button class="btn full" style="margin-top:10px" data-cloud-join>Meedoen met een lijst</button>`;
+}
+async function pickList(v) {
+  const entry = v === "local" ? null : cloud.st.lists[Number(v)];
+  if (entry && entry.status !== "active") return;
+  cloud.restore(entry);
+  await cloud.saveCfg();
+  resetListState();
+  closeSheet();
+  state.loaded = false; render();
+  try { await reload(); } catch (e) { state.loadError = e?.msg || "Laden lukte niet."; render(); }
+  toast(entry ? `${entry.name} geopend` : "De planten op deze telefoon");
+}
 function topBanners() {
   let h = "";
   if (state.offline) h += `<div class="note" style="margin-top:14px">Geen verbinding met de gedeelde lijst. Je ziet de laatst bekende stand.</div>`;
-  if (cloud.cfg?.status === "pending") h += `<button class="req-banner" data-settings>Wachten tot de beheerder van ${esc(cloud.cfg.name)} je accepteert</button>`;
+  for (const l of cloud.st.lists.filter(x => x.household && x.status === "pending"))
+    h += `<button class="req-banner" data-lists>Wachten tot de beheerder van ${esc(l.name)} je accepteert</button>`;
   if (isCloud() && cloud.cfg.role === "admin") {
     const n = (state.members || []).filter(m => m.status === "pending").length;
     if (n) h += `<button class="req-banner" data-settings>${n} ${n === 1 ? "huisgenoot wil" : "huisgenoten willen"} meedoen. Bekijk de aanvraag.</button>`;
@@ -677,7 +768,7 @@ function topBanners() {
 }
 function todayView() {
   const dateStr = new Date().toLocaleDateString("nl-NL", { weekday:"long", day:"numeric", month:"long" });
-  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p>${isCloud() ? `<p class="listname">${esc(cloud.cfg.name)}</p>` : ""}</header>${topBanners()}`;
+  let html = `<header class="top"><h1>Vandaag</h1><p class="date">${esc(dateStr)}</p>${listSwitch()}</header>${topBanners()}`;
   if (!state.plants.length) {
     return html + `<div class="empty">${LEAF_SVG}<h2 style="margin:8px 0 0">Nog geen planten</h2><p>Maak een foto van jullie eerste plant en geef hem een label. De app zoekt op hoeveel water hij nodig heeft.</p><button class="btn leaf" style="margin:0 auto" data-act="add">Eerste plant toevoegen</button></div>`;
   }
@@ -756,6 +847,8 @@ function renderSheet() {
     sheet.innerHTML = head(c.done ? "Gedeelde lijst" : "Gedeelde lijst maken", c.done ? "close" : "settings") + `<div class="body">${cloudCreateBody()}</div>`;
   } else if (c.mode === "cloudJoin") {
     sheet.innerHTML = head(c.recover ? "Beheerder herstellen" : "Meedoen met een lijst", "settings") + `<div class="body">${cloudJoinBody()}</div>`;
+  } else if (c.mode === "lists") {
+    sheet.innerHTML = head("Jouw lijsten") + `<div class="body">${listsBody()}</div>`;
   } else if (c.mode === "stats") {
     sheet.innerHTML = head("Ranglijst") + `<div class="body">${statsBody()}</div>`;
   } else if (c.mode === "pushSetup") {
@@ -1100,7 +1193,7 @@ function settingsBody() {
 }
 
 function memberRow(m, actions) {
-  const me = m.user_id === cloud.cfg?.session?.user_id;
+  const me = m.user_id === cloud.session?.user_id;
   const label = m.role === "admin" ? "Beheerder" : m.status === "pending" ? "Wil meedoen" : "Lid";
   return `<div class="mrow"><div class="mname"><b>${esc(m.display_name)}${me ? " (jij)" : ""}</b><span>${label}</span></div>${actions ? `<div class="mact">${actions}</div>` : ""}</div>`;
 }
@@ -1120,14 +1213,16 @@ function sharePanel() {
     <button class="btn leaf full" style="margin-top:10px" data-cloud-create>Gedeelde lijst maken</button>
     <button class="btn full" style="margin-top:10px" data-cloud-join>Meedoen met een lijst</button>
     <p class="hint">De beheerder van het huishouden maakt de lijst, met een eigen gratis Supabase-database. Huisgenoten doen mee via een uitnodigingslink.</p>
+    ${cloud.st.lists.some(l => l.household) ? `<button class="btn full" style="margin-top:10px" data-lists>Naar je gedeelde lijsten</button>` : ""}
   </div>`;
-  const admin = cf.role === "admin", me = cf.session?.user_id;
+  const admin = cf.role === "admin", me = cloud.session?.user_id;
   const mem = state.members || [];
   const pend = mem.filter(m => m.status === "pending"), act = mem.filter(m => m.status === "active");
   return `
   <div class="panel">
     <h4>${esc(cf.name)}</h4>
     <p>Je bent ${admin ? "beheerder" : "lid"} van deze gedeelde lijst.</p>
+    <button class="btn full" style="margin-top:10px" data-lists>Andere lijst kiezen of maken</button>
     ${admin && pend.length ? `<h4 class="sub">Aanvragen</h4>${pend.map(m => memberRow(m,
       `<button class="btn mini leaf" data-m-ok="${esc(m.user_id)}">Accepteren</button><button class="btn mini" data-m-del="${esc(m.user_id)}" data-m-name="${esc(m.display_name)}">Weigeren</button>`)).join("")}` : ""}
     <h4 class="sub">Leden</h4>
@@ -1142,8 +1237,13 @@ function sharePanel() {
 }
 
 /* --- create a shared list (admin) --- */
+function resetListState() {
+  state.stats = {}; state.monthTop = null; state.members = [];
+  push.key = undefined; push.sub = null;
+}
 function cloudCreateBody() {
   const c = sheetCtx;
+  const base = cloud.adminBase();
   if (c.done) return `
   <div class="note" style="margin-top:0">${esc(cloud.cfg.name)} is aangemaakt. Jij bent de beheerder.</div>
   <div class="panel">
@@ -1163,6 +1263,12 @@ function cloudCreateBody() {
     ${c.migrated ? `<div class="note">${esc(c.migrated)}</div>` : c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:10px" data-cloud-migrate>Planten meenemen</button>`}
   </div>` : ""}
   <button class="btn full" style="margin-top:14px" data-sheet="close">Klaar</button>`;
+  if (base) return `
+  <p style="margin-top:4px">Je maakt een extra lijst, bijvoorbeeld voor op kantoor. Jij wordt er de beheerder van en nodigt daarna zelf mensen uit. De lijst komt in dezelfde database als ${esc(base.name)}.</p>
+  <label class="f">Naam van de lijst<input id="cName" value="${esc(c.name || "")}" placeholder="Bijv. Kantoor" maxlength="60"></label>
+  <label class="f">Jouw naam<input id="cMe" value="${esc(c.me ?? base.display ?? "")}" placeholder="Bijv. Matthijs" maxlength="40"></label>
+  ${c.error ? `<div class="err">${esc(c.error)}</div>` : ""}
+  ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:16px" data-cloud-create-go>Lijst aanmaken</button>`}`;
   return `
   <p style="margin-top:4px">Maak eerst een gratis Supabase-database aan. Dat duurt ongeveer een half uur en gaat het makkelijkst op een laptop.</p>
   <a class="btn full" style="margin-top:10px;text-decoration:none;color:inherit" href="handleiding.html" target="_blank" rel="noopener">Handleiding openen</a>
@@ -1175,27 +1281,30 @@ function cloudCreateBody() {
   ${c.busy ? `<div class="thinking"><span class="spin"></span>${esc(c.busy)}</div>` : `<button class="btn leaf full" style="margin-top:16px" data-cloud-create-go>Lijst aanmaken</button>`}`;
 }
 async function cloudCreateGo() {
-  const c = sheetCtx;
-  c.url = cleanUrl($("#cUrl").value); c.key = $("#cKey").value.trim(); c.name = $("#cName").value.trim(); c.me = $("#cMe").value.trim();
+  const c = sheetCtx, base = cloud.adminBase();
+  if (base) { c.url = base.url; c.key = base.key; }
+  else { c.url = cleanUrl($("#cUrl").value); c.key = $("#cKey").value.trim(); }
+  c.name = $("#cName").value.trim(); c.me = $("#cMe").value.trim();
   c.error = "";
   if (!validUrl(c.url)) c.error = "De Project URL moet beginnen met https:// en eindigen op .supabase.co.";
   else if (c.key.length < 20) c.error = "Plak de volledige publishable key of anon key.";
   else if (!c.name || !c.me) c.error = "Vul de naam van de lijst en je eigen naam in.";
+  else if (cloud.st.lists.some(l => l.household && l.url === c.url && l.name.toLowerCase() === c.name.toLowerCase())) c.error = "Je hebt al een lijst met deze naam.";
   if (c.error) { renderSheet(); return; }
   c.busy = "Lijst aanmaken…"; renderSheet();
   const prev = cloud.cfg;
   try {
-    cloud.cfg = { url: c.url, key: c.key, household: null, name: c.name, display: c.me, role: null, status: null, invite: null, session: null };
-    await cloud.signIn();
+    cloud.cfg = { url: c.url, key: c.key, household: null, name: c.name, display: c.me, role: null, status: null, invite: null };
+    if (!cloud.st.sessions[c.url]) await cloud.signIn();
     const r = await cloud.rpc("create_household", { p_name: c.name, p_display: c.me });
     Object.assign(cloud.cfg, { household: r.household, name: r.name, invite: r.invite, role: "admin", status: "active" });
     await cloud.saveCfg();
     c.recovery = r.recovery; c.done = true; c.busy = "";
-    c.localCount = ((await store.all()) || []).length;
-    state.photoCache = {};
+    c.localCount = cloud.st.lists.filter(l => l.household).length > 1 ? 0 : ((await store.all()) || []).length;
+    resetListState();
     await reload();
   } catch (e) {
-    cloud.cfg = prev; await store.set("cloud", prev || null).catch(() => {});
+    cloud.restore(prev); await cloud.saveCfg().catch(() => {});
     c.busy = ""; c.error = e?.msg || "Het aanmaken lukte niet.";
   }
   renderSheet();
@@ -1240,39 +1349,41 @@ async function cloudJoinGo() {
   c.busy = c.recover ? "Beheerder herstellen…" : "Toegang vragen…"; renderSheet();
   const prev = cloud.cfg;
   try {
-    const sameDb = prev && prev.url === link.u && prev.session;
-    cloud.cfg = { url: link.u, key: link.k, household: null, name: link.n || "de lijst", display: c.me, role: null, status: null, invite: null, session: sameDb ? prev.session : null };
-    if (!sameDb) await cloud.signIn();
+    cloud.cfg = { url: link.u, key: link.k, household: null, name: link.n || "de lijst", display: c.me, role: null, status: null, invite: null };
+    if (!cloud.st.sessions[link.u]) await cloud.signIn();
+    let r;
     if (c.recover) {
-      const r = await cloud.rpc("recover_admin", { p_recovery: c.rec, p_display: c.me });
+      r = await cloud.rpc("recover_admin", { p_recovery: c.rec, p_display: c.me });
       Object.assign(cloud.cfg, { household: r.household, name: r.name, invite: r.invite, role: "admin", status: "active" });
     } else {
-      const r = await cloud.rpc("join_household", { p_code: link.c, p_display: c.me });
+      r = await cloud.rpc("join_household", { p_code: link.c, p_display: c.me });
       Object.assign(cloud.cfg, { household: r.household, name: r.name, role: r.role, status: r.status });
     }
+    // Already had this list on the phone? Keep one entry.
+    let entry = cloud.cfg;
+    const dup = cloud.st.lists.find(l => l !== entry && l.household === entry.household);
+    if (dup) { Object.assign(dup, { name: entry.name, role: entry.role, status: entry.status, display: entry.display, ...(entry.invite ? { invite: entry.invite } : {}) }); cloud.st.lists = cloud.st.lists.filter(l => l !== entry); cloud.restore(dup); entry = dup; }
+    // Waiting for approval while another list works: keep showing that list.
+    if (entry.status !== "active" && prev && prev.status === "active" && prev !== entry) cloud.restore(prev);
     await cloud.saveCfg();
-    state.photoCache = {};
-    if (isCloud()) {
-      await reload();
-      closeSheet();
-      toast(c.recover ? `Je bent weer beheerder van ${cloud.cfg.name}` : `Je doet mee met ${cloud.cfg.name}`);
+    resetListState();
+    await reload();
+    closeSheet();
+    if (entry.status === "active") {
+      toast(c.recover ? `Je bent weer beheerder van ${entry.name}` : `Je doet mee met ${entry.name}`);
       if (c.recover) setTimeout(() => toast("Verwijder je oude telefoon bij Instellingen, Leden."), 5200);
-    } else {
-      await reload();
-      openSheet({ mode: "settings" });
-    }
+    } else toast(`Aanvraag verstuurd. Zodra de beheerder van ${entry.name} je accepteert, verschijnt de lijst.`);
   } catch (e) {
-    cloud.cfg = prev; await store.set("cloud", prev || null).catch(() => {});
+    cloud.restore(prev); await cloud.saveCfg().catch(() => {});
     c.busy = ""; c.error = e?.msg || "Dat lukte niet. Probeer het opnieuw."; renderSheet();
   }
 }
 async function cloudCheck() {
   try {
-    const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
-    if (!st) { await lostAccess("De beheerder heeft je aanvraag niet geaccepteerd."); return; }
-    Object.assign(cloud.cfg, { status: st.status, role: st.role, name: st.name, invite: st.invite });
-    await cloud.saveCfg();
-    if (isCloud()) { await reload(); closeSheet(); toast(`Je bent geaccepteerd voor ${cloud.cfg.name}`); }
+    const r = await cloud.syncLists();
+    if (r.lostActive) { resetListState(); await reload().catch(() => {}); closeSheet(); toast("De beheerder heeft je aanvraag niet geaccepteerd."); return; }
+    const mine = r.accepted.find(l => l === cloud.cfg) || r.accepted[0];
+    if (mine) { cloud.cfg = mine; await cloud.saveCfg(); resetListState(); await reload(); closeSheet(); toast(`Je bent geaccepteerd voor ${mine.name}`); }
     else toast("Nog niet geaccepteerd. Probeer het later opnieuw.");
   } catch (e) { toast(e?.msg || "Controleren lukte niet."); }
 }
@@ -1285,14 +1396,11 @@ async function cloudLeave() {
 }
 async function lostAccess(msg) {
   cloud.cfg = null;
-  state.stats = {}; state.monthTop = null;
-  push.key = undefined; push.sub = null;
-  state.members = [];
-  state.photoCache = {};
-  await store.set("cloud", null).catch(() => {});
+  resetListState();
+  await cloud.saveCfg().catch(() => {});
   await reload().catch(() => {});
   if (sheetCtx?.mode === "settings") renderSheet();
-  toast(msg + " De app toont weer de planten van deze telefoon.");
+  toast(msg + (cloud.cfg ? ` De app toont nu ${cloud.cfg.name}.` : " De app toont weer de planten van deze telefoon."));
 }
 async function memberAction(kind, uid, name) {
   const h = cloud.cfg.household;
@@ -1429,12 +1537,14 @@ function notifPanel() {
   }
   if (typeof Notification === "undefined" || !("PushManager" in window)) return `
   <div class="panel"><h4>Meldingen</h4><p>Deze browser kan geen meldingen ontvangen. Gebruik je een iPhone? Zet de app dan op je beginscherm en open hem daar.</p></div>`;
-  const m = state.meldingen, on = !!(m.push && push.sub && Notification.permission === "granted");
-  const tijd = m.tijd || "18:00";
+  const m = state.meldingen, hid = cloud.cfg.household;
+  const on = !!(m.pushLists?.[hid] && push.sub && Notification.permission === "granted");
+  const tijd = m.tijden?.[hid] || m.tijd || "18:00";
+  const other = cloud.st.lists.filter(l => l.household && l !== cloud.cfg && m.pushLists?.[l.household]);
   return `
   <div class="panel">
     <h4>Meldingen</h4>
-    <p>${on ? `Aan. Je krijgt elke dag om ${esc(tijd)} een melding als er planten water nodig hebben. Hebben je huisgenoten al water gegeven, dan krijg je niets.`
+    <p>${on ? `Aan voor ${esc(cloud.cfg.name)}. Je krijgt elke dag om ${esc(tijd)} een melding als er planten water nodig hebben. Hebben anderen al water gegeven, dan krijg je niets.`
             : Notification.permission === "denied" ? "Meldingen zijn geblokkeerd. Zet ze aan via de instellingen van je telefoon of browser."
             : "Uit. Kies een tijdstip en zet de meldingen aan."}</p>
     <label class="f">Tijdstip<input type="time" id="nTime" value="${esc(tijd)}" min="06:00" max="22:00" step="300"></label>
@@ -1445,7 +1555,8 @@ function notifPanel() {
       <label class="sym"><input type="radio" name="nmode" value="stil" ${m.stil ? "checked" : ""}><span>Alleen op het scherm, zonder geluid of trillen</span></label>
       <label class="sym"><input type="radio" name="nmode" value="geluid" ${!m.stil ? "checked" : ""}><span>Met geluid en trillen</span></label>
     </div>
-    <p class="hint">Je kunt een tijd kiezen tussen 06:00 en 22:00. De melding komt binnen vijf minuten na het gekozen tijdstip.${isBrave() ? " Gebruik je Brave? Zet dan in Brave bij Instellingen, Privacy en beveiliging de optie Google-services voor pushberichten gebruiken aan." : ""}</p>
+    ${other.length ? `<p class="hint">Ook aan voor ${other.map(l => `${esc(l.name)} om ${esc(m.tijden?.[l.household] || "18:00")}`).join(" en ")}. Wissel van lijst om die tijd te veranderen.</p>` : ""}
+    <p class="hint">Je kunt per lijst een tijd kiezen tussen 06:00 en 22:00. De melding komt binnen vijf minuten na het gekozen tijdstip.${isBrave() ? " Gebruik je Brave? Zet dan in Brave bij Instellingen, Privacy en beveiliging de optie Google-services voor pushberichten gebruiken aan." : ""}</p>
   </div>`;
 }
 function pushError(e) {
@@ -1455,52 +1566,68 @@ function pushError(e) {
   return e?.msg || "Aanzetten lukte niet. Probeer het opnieuw.";
 }
 async function pushSave(sub) {
-  const j = sub.toJSON();
+  const j = sub.toJSON(), hid = cloud.cfg.household;
   await cloud.rpc("save_subscription", {
-    p_household: cloud.cfg.household, p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh || null, p_auth: j.keys?.auth || null,
-    p_time: state.meldingen.tijd || "18:00", p_tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"
+    p_household: hid, p_endpoint: j.endpoint, p_p256dh: j.keys?.p256dh || null, p_auth: j.keys?.auth || null,
+    p_time: state.meldingen.tijden?.[hid] || "18:00", p_tz: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Amsterdam"
   });
 }
+async function saveMeldingen() {
+  const m = state.meldingen;
+  m.push = Object.values(m.pushLists || {}).some(Boolean);
+  m.aan = m.push || !!m.aan;
+  await store.set("meldingen", m);
+}
 async function pushOn() {
+  const m = state.meldingen, hid = cloud.cfg.household;
   try {
-    const t = $("#nTime")?.value; if (t) state.meldingen.tijd = t;
+    m.tijden ||= {}; m.pushLists ||= {};
+    const t = $("#nTime")?.value; m.tijden[hid] = /^\d{2}:\d{2}$/.test(t || "") ? t : (m.tijden[hid] || m.tijd || "18:00");
     const perm = await Notification.requestPermission();
     if (perm !== "granted") { renderSheet(); return; }
     const reg = await swReady();
     if (!reg?.pushManager) throw { msg: "Deze browser ondersteunt geen pushmeldingen. Op een iPhone werkt het alleen als de app op het beginscherm staat." };
     let sub = await reg.pushManager.getSubscription();
-    if (sub && sub.options?.applicationServerKey && bytesB64u(sub.options.applicationServerKey) !== push.key) { await sub.unsubscribe(); sub = null; }
+    if (sub && sub.options?.applicationServerKey && bytesB64u(sub.options.applicationServerKey) !== push.key) { await sub.unsubscribe(); sub = null; m.pushLists = {}; }
     sub = sub || await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uBytes(push.key) });
     await pushSave(sub);
     push.sub = sub;
-    state.meldingen.push = true; state.meldingen.aan = true;
-    await store.set("meldingen", state.meldingen);
-    toast(`Meldingen staan aan om ${state.meldingen.tijd || "18:00"}`);
+    m.pushLists[hid] = true;
+    await saveMeldingen();
+    toast(`Meldingen voor ${cloud.cfg.name} staan aan om ${m.tijden[hid]}`);
   } catch (e) { toast(pushError(e)); }
   renderSheet();
 }
 async function pushOff() {
+  const m = state.meldingen, hid = cloud.cfg.household;
   try {
-    if (push.sub) { const ep = push.sub.endpoint; await push.sub.unsubscribe().catch(() => {}); await cloud.rpc("delete_subscription", { p_endpoint: ep }).catch(() => {}); }
-    push.sub = null; state.meldingen.push = false; state.meldingen.aan = false;
-    await store.set("meldingen", state.meldingen);
-    toast("Meldingen staan uit");
+    if (push.sub) await cloud.rpc("delete_subscription", { p_endpoint: push.sub.endpoint, p_household: hid }).catch(() => {});
+    m.pushLists ||= {}; m.pushLists[hid] = false;
+    if (push.sub && !Object.values(m.pushLists).some(Boolean)) { await push.sub.unsubscribe().catch(() => {}); push.sub = null; }
+    await saveMeldingen();
+    toast(`Meldingen voor ${cloud.cfg.name} staan uit`);
   } catch (e) { toast(e?.msg || "Uitzetten lukte niet."); }
   renderSheet();
 }
 async function pushTime(v) {
   if (!/^\d{2}:\d{2}$/.test(v)) return;
   if (v < "06:00" || v > "22:00") { toast("Kies een tijd tussen 06:00 en 22:00."); renderSheet(); return; }
-  state.meldingen.tijd = v;
-  await store.set("meldingen", state.meldingen);
-  if (state.meldingen.push && push.sub) {
-    try { await pushSave(push.sub); toast(`Meldingen komen voortaan om ${v}`); } catch (e) { toast(e?.msg || "Opslaan lukte niet."); }
+  const m = state.meldingen, hid = cloud.cfg.household;
+  m.tijden ||= {}; m.tijden[hid] = v;
+  await saveMeldingen();
+  if (m.pushLists?.[hid] && push.sub) {
+    try { await pushSave(push.sub); toast(`Meldingen voor ${cloud.cfg.name} komen voortaan om ${v}`); } catch (e) { toast(e?.msg || "Opslaan lukte niet."); }
   }
   renderSheet();
 }
 async function pushTest() {
-  try { await cloud.rpc("push_test", { p_endpoint: push.sub.endpoint }); toast("Testmelding aangevraagd. Hij komt binnen vijf minuten."); }
-  catch (e) { toast(e?.msg || "De testmelding lukte niet."); }
+  const hid = cloud.cfg.household;
+  try {
+    await cloud.rpc("push_test", { p_endpoint: push.sub.endpoint, p_household: hid });
+    state.meldingen.testFor = { hid, until: Date.now() + 20 * 60 * 1000 };
+    await saveMeldingen();
+    toast("Testmelding aangevraagd. Hij komt binnen vijf minuten.");
+  } catch (e) { toast(e?.msg || "De testmelding lukte niet."); }
 }
 
 /* admin: connect the household's Supabase to send notifications */
@@ -1526,8 +1653,8 @@ async function pushConnect() {
     const pub = bytesB64u(await crypto.subtle.exportKey("raw", kp.publicKey));
     const { kty, crv, x, y, d } = await crypto.subtle.exportKey("jwk", kp.privateKey);
     await cloud.rpc("setup_push", { p_household: cloud.cfg.household, p_function_url: fnUrl, p_public: pub, p_private: { kty, crv, x, y, d }, p_subject: location.origin + location.pathname });
-    push.key = pub; push.sub = null; state.meldingen.push = false;
-    await store.set("meldingen", state.meldingen);
+    push.key = pub; push.sub = null; state.meldingen.pushLists = {};
+    await saveMeldingen();
     openSheet({ mode: "settings" });
     toast("Gekoppeld. Kies nu je tijdstip en zet de meldingen aan.");
   } catch (e) {
@@ -1586,7 +1713,7 @@ async function loadMonthTop() {
 }
 const MEDALS = ["🥇", "🥈", "🥉"];
 function rankRows(list, max) {
-  const me = cloud.cfg?.session?.user_id;
+  const me = cloud.session?.user_id;
   const top = Math.max(1, ...list.map(r => r.water));
   return list.slice(0, max).map((r, i) => `
     <div class="rank">
@@ -1705,11 +1832,15 @@ function toast(msg, undo) {
   toastTimer = setTimeout(() => host.innerHTML = "", 5000);
 }
 async function reload() {
+  if (cloud.cfg?.household && cloud.cfg.status === "pending") {
+    // Waiting for approval: see whether the admin has accepted in the meantime.
+    try { const r = await cloud.syncLists(); for (const l of r.accepted) toast(`Je bent geaccepteerd voor ${l.name}`); } catch {}
+  }
   if (isCloud()) {
     const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
     if (!st || st.status !== "active") { await lostAccess("Je hebt geen toegang meer tot de gedeelde lijst."); return; }
     Object.assign(cloud.cfg, { role: st.role, name: st.name, invite: st.invite, display: st.display });
-    store.set("cloud", cloud.cfg).catch(() => {});
+    cloud.saveCfg().catch(() => {});
     state.members = (await cloud.req(`/rest/v1/members?select=user_id,display_name,role,status,created_at&household_id=eq.${cloud.hid()}&order=created_at`)) || [];
     state.stats = {};
     await loadMonthTop();
@@ -1837,6 +1968,8 @@ document.addEventListener("click", e => {
   if (t.dataset.mAdmin) { memberAction("admin", t.dataset.mAdmin, nameOf(t.dataset.mAdmin)); return; }
   if (t.hasAttribute("data-invite-share")) { shareInvite(); return; }
   if (t.hasAttribute("data-stats")) { openStats(); return; }
+  if (t.hasAttribute("data-lists")) { openSheet({ mode: "lists" }); return; }
+  if (t.dataset.pick !== undefined) { pickList(t.dataset.pick); return; }
   if (t.dataset.stype) { openStats(t.dataset.stype, 0); return; }
   if (t.dataset.soff) { const o = sheetCtx.off + Number(t.dataset.soff); if (o <= 0) openStats(sheetCtx.type, o); return; }
   if (t.hasAttribute("data-push-setup")) { openSheet({ mode: "pushSetup" }); return; }
@@ -1874,20 +2007,18 @@ document.addEventListener("visibilitychange", () => { if (!document.hidden) { re
 let refreshing = false;
 async function refresh() {
   if (refreshing || !state.loaded || document.hidden) return;
-  const pending = cloud.cfg?.status === "pending";
-  if (!isCloud() && !pending) return;
-  if (sheetCtx && !["detail", "settings"].includes(sheetCtx.mode)) return;
+  if (!cloud.st.lists.some(l => l.household)) return;
+  if (sheetCtx && !["detail", "settings", "lists"].includes(sheetCtx.mode)) return;
   if (["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName)) return;
   refreshing = true;
   try {
-    if (pending) {
-      const st = await cloud.rpc("my_status", { p_household: cloud.cfg.household });
-      if (st?.status === "active") { Object.assign(cloud.cfg, { status: "active", role: st.role, name: st.name, invite: st.invite }); await cloud.saveCfg(); await reload(); toast(`Je bent geaccepteerd voor ${cloud.cfg.name}`); }
-      else if (!st) await lostAccess("De beheerder heeft je aanvraag niet geaccepteerd.");
-    } else {
-      await reload();
+    const r = await cloud.syncLists();
+    if (r?.lostActive) { resetListState(); await reload(); toast("Je hebt geen toegang meer tot die lijst."); }
+    else {
+      for (const l of r?.accepted || []) toast(`Je bent geaccepteerd voor ${l.name}`);
+      if (isCloud()) await reload(); else if (r?.accepted?.length) render();
     }
-    if (sheetCtx?.mode === "settings") renderSheet();
+    if (["settings", "lists"].includes(sheetCtx?.mode)) renderSheet();
   } catch (e) { if (e?.offline && !state.offline) { state.offline = true; render(); } }
   refreshing = false;
 }
@@ -1903,19 +2034,24 @@ render();
   }
   state.key = (await store.get("plantnetKey").catch(() => "")) || "";
   state.meldingen = { aan: false, stil: true, ...((await store.get("meldingen").catch(() => null)) || {}) };
-  cloud.cfg = (await store.get("cloud").catch(() => null)) || null;
+  await cloud.load();
+  { const m = state.meldingen;  // first version had one time and one switch for the only list
+    if (m.push && !m.pushLists && cloud.cfg?.household) { m.pushLists = { [cloud.cfg.household]: true }; m.tijden = { [cloud.cfg.household]: m.tijd || "18:00" }; await store.set("meldingen", m).catch(() => {}); } }
   for (const ph of ((await store.photoAll().catch(() => [])) || [])) state.photoCache[ph.id] = ph.data;
   const inv = parseInvite(location.hash);
   if (location.hash.startsWith("#join=")) history.replaceState(null, "", location.pathname + location.search);
   try { await reload(); }
   catch (e) {
-    const cache = isCloud() ? await store.get("cloudCache").catch(() => null) : null;
+    const cache = isCloud() ? await store.get("cloudCache:" + cloud.cfg.household).catch(() => null) : null;
     if (cache) { state.plants = cache.map(p => ({ ...p, label: str(p.label) || "Plant" })); state.loaded = true; state.offline = true; render(); }
     else { state.loadError = e?.msg || "Onbekende fout."; render(); }
   }
   if (inv) {
-    const already = cloud.cfg && cloud.cfg.url === inv.u && (isCloud() || cloud.cfg.status === "pending");
-    if (already) toast(isCloud() ? `Je doet al mee met ${cloud.cfg.name}` : "Je aanvraag loopt nog. De beheerder moet je nog accepteren.");
+    const same = cloud.st.lists.find(l => l.url === inv.u && ((l.invite && l.invite === inv.c) || (l.status === "pending" && l.name === inv.n)));
+    if (same) {
+      toast(same.status === "active" ? `Je doet al mee met ${same.name}` : `Je aanvraag voor ${same.name} loopt nog. De beheerder moet je nog accepteren.`);
+      if (same.status === "active" && same !== cloud.cfg) { cloud.cfg = same; await cloud.saveCfg(); await reload().catch(() => {}); }
+    }
     else openSheet({ mode: "cloudJoin", link: inv });
   }
   if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});

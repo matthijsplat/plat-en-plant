@@ -1,4 +1,4 @@
-const CACHE = "gietgenoten-v7";
+const CACHE = "gietgenoten-v8";
 const FILES = ["./", "./index.html", "./planten-db.js", "./manifest.webmanifest", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); self.skipWaiting(); });
@@ -57,26 +57,38 @@ function namesText(list) {
   if (list.length <= 4) return list.slice(0, -1).join(", ") + " en " + list[list.length - 1];
   return list.slice(0, 3).join(", ") + ` en nog ${list.length - 3} andere`;
 }
-/* Bij een gedeelde lijst: haal de actuele planten op uit de database van het huishouden. */
-async function cloudPlants(db) {
-  const cfg = await req(db, "settings", "readonly", s => s.get("cloud"));
-  if (!cfg || cfg.status !== "active" || !cfg.household || !cfg.session) return null;
+/* Gedeelde lijsten: de app bewaart { lists, sessions, active }. De eerste versie bewaarde één lijst met eigen sessie. */
+async function cloudState(db) {
+  let s = await req(db, "settings", "readonly", st => st.get("cloud"));
+  if (s && !s.lists && s.url) { const { session, ...l } = s; s = { lists: l.household ? [l] : [], sessions: session ? { [l.url]: session } : {}, active: 0 }; }
+  return s && s.lists ? s : null;
+}
+async function plantsOf(db, s, l) {
   try {
-    let s = cfg.session;
-    if (s.expires_at - 60 < Date.now() / 1000) {
-      const r = await fetch(cfg.url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: cfg.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: s.refresh_token }) });
+    let ses = s.sessions?.[l.url];
+    if (!ses) throw 0;
+    if (ses.expires_at - 60 < Date.now() / 1000) {
+      const r = await fetch(l.url + "/auth/v1/token?grant_type=refresh_token", { method: "POST", headers: { apikey: l.key, "Content-Type": "application/json" }, body: JSON.stringify({ refresh_token: ses.refresh_token }) });
       const j = await r.json();
       if (!r.ok || !j.access_token) throw 0;
-      s = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600), user_id: s.user_id };
-      cfg.session = s;
-      await req(db, "settings", "readwrite", st => st.put(cfg, "cloud"));
+      ses = { access_token: j.access_token, refresh_token: j.refresh_token, expires_at: j.expires_at || Math.floor(Date.now() / 1000) + (j.expires_in || 3600), user_id: ses.user_id };
+      s.sessions[l.url] = ses;
+      const fresh = (await req(db, "settings", "readonly", st => st.get("cloud"))) || s;
+      if (fresh.lists) { fresh.sessions = { ...(fresh.sessions || {}), [l.url]: ses }; await req(db, "settings", "readwrite", st => st.put(fresh, "cloud")); }
     }
-    const r = await fetch(`${cfg.url}/rest/v1/plants?select=id,data&household_id=eq.${encodeURIComponent(cfg.household)}`, { headers: { apikey: cfg.key, Authorization: "Bearer " + s.access_token } });
+    const r = await fetch(`${l.url}/rest/v1/plants?select=id,data&household_id=eq.${encodeURIComponent(l.household)}`, { headers: { apikey: l.key, Authorization: "Bearer " + ses.access_token } });
     if (!r.ok) throw 0;
     return (await r.json()).map(x => ({ ...(x.data || {}), id: x.id }));
   } catch {
-    return (await req(db, "settings", "readonly", st => st.get("cloudCache"))) || [];
+    return (await req(db, "settings", "readonly", st => st.get("cloudCache:" + l.household))) || [];
   }
+}
+/* De lijst die nu in de app open staat (voor de dagelijkse controle zonder vaste tijd) */
+async function cloudPlants(db) {
+  const s = await cloudState(db);
+  const l = s && typeof s.active === "number" ? s.lists[s.active] : null;
+  if (!l || l.status !== "active" || !l.household) return null;
+  return plantsOf(db, s, l);
 }
 async function checkPlants() {
   const now = new Date(), hour = now.getHours();
@@ -118,20 +130,45 @@ function dueMessage(plants, now) {
     : water.length ? `${water.length} planten hebben water nodig` : "Gietgenoten";
   return { title, body: shown.length ? shown.join("\n") : "Alle planten hebben op dit moment genoeg water.", count: water.length };
 }
-function showDue(plants, settings) {
+function showDue(plants, settings, listName, hid, always = true) {
   const m = dueMessage(plants, new Date());
-  return self.registration.showNotification(m.title, {
+  if (!m.count && !always) return Promise.resolve();
+  const title = !listName ? m.title : m.count ? `${listName}: ${m.count === 1 ? "1 plant heeft" : `${m.count} planten hebben`} water nodig` : listName;
+  return self.registration.showNotification(title, {
     body: m.body,
-    icon: "icon-192.png", badge: "icon-192.png", tag: "water",
+    icon: "icon-192.png", badge: "icon-192.png", tag: "water-" + (hid || "telefoon"),
     silent: !!settings.stil, ...(settings.stil ? {} : { vibrate: [200, 100, 200] })
   });
 }
-/* Melding op een vast tijdstip, verstuurd door de eigen Supabase van het huishouden */
+/* Is het nu (ongeveer) het gekozen tijdstip van deze lijst? De server stuurt binnen 15 minuten na dat tijdstip. */
+function nearTime(hhmm, now) {
+  const [h, mi] = String(hhmm || "18:00").split(":").map(Number);
+  const diff = (now.getHours() * 60 + now.getMinutes()) - (h * 60 + mi);
+  return diff >= -5 && diff <= 25;
+}
+/* Melding op een vast tijdstip, verstuurd door de eigen Supabase van de lijst */
 async function onPush() {
   const db = await openDb();
   const settings = (await req(db, "settings", "readonly", s => s.get("meldingen"))) || {};
-  const plants = (await cloudPlants(db)) ?? ((await req(db, "plants", "readonly", st => st.getAll())) || []);
-  await showDue(plants, settings);
+  const s = await cloudState(db), now = new Date();
+  const lists = (s?.lists || []).filter(l => l.household && l.status === "active" && (settings.pushLists ? settings.pushLists[l.household] : true));
+  if (!lists.length) {
+    const plants = (await cloudPlants(db)) ?? ((await req(db, "plants", "readonly", st => st.getAll())) || []);
+    await showDue(plants, settings);
+    db.close(); return;
+  }
+  const test = settings.testFor && settings.testFor.until > Date.now() ? settings.testFor.hid : null;
+  let pick = test ? lists.filter(l => l.household === test) : lists.filter(l => nearTime(settings.tijden?.[l.household], now));
+  if (!pick.length) pick = lists;
+  const named = lists.length > 1;
+  let shown = 0;
+  for (const l of pick) {
+    const plants = await plantsOf(db, s, l);
+    const m = dueMessage(plants, now);
+    if (m.count || test === l.household) { await showDue(plants, settings, named ? l.name : "", l.household); shown++; }
+  }
+  if (!shown) await self.registration.showNotification("Gietgenoten", { body: "Alle planten hebben op dit moment genoeg water.", icon: "icon-192.png", tag: "water-ok", silent: true });
+  if (test) { settings.testFor = null; await req(db, "settings", "readwrite", st => st.put(settings, "meldingen")); }
   db.close();
 }
 self.addEventListener("push", e => {

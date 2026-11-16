@@ -18,7 +18,7 @@ create table if not exists public.push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   household_id uuid not null references public.households on delete cascade,
   user_id uuid not null references auth.users on delete cascade,
-  endpoint text not null unique check (endpoint ~ '^https://'),
+  endpoint text not null check (endpoint ~ '^https://'),
   p256dh text,
   auth text,
   notify_time time not null default '18:00',
@@ -28,6 +28,9 @@ create table if not exists public.push_subscriptions (
   created_at timestamptz not null default now()
 );
 alter table public.push_subscriptions enable row level security;
+-- Eén telefoon kan per lijst een eigen tijdstip hebben.
+alter table public.push_subscriptions drop constraint if exists push_subscriptions_endpoint_key;
+create unique index if not exists push_sub_endpoint_household on public.push_subscriptions (endpoint, household_id);
 
 -- ---------- Berekening: hoeveel planten hebben vandaag water nodig ----------
 create or replace function public.num_or(v text, d numeric) returns numeric
@@ -101,20 +104,24 @@ begin
   if not exists (select 1 from pg_timezone_names where name = p_tz) then p_tz := 'Europe/Amsterdam'; end if;
   insert into push_subscriptions (household_id, user_id, endpoint, p256dh, auth, notify_time, tz)
   values (p_household, auth.uid(), p_endpoint, p_p256dh, p_auth, p_time::time, p_tz)
-  on conflict (endpoint) do update set household_id = excluded.household_id, user_id = excluded.user_id,
+  on conflict (endpoint, household_id) do update set user_id = excluded.user_id,
     p256dh = excluded.p256dh, auth = excluded.auth, notify_time = excluded.notify_time, tz = excluded.tz,
     last_sent = case when push_subscriptions.notify_time <> excluded.notify_time then null else push_subscriptions.last_sent end;
 end $$;
 
-create or replace function public.delete_subscription(p_endpoint text) returns void
+drop function if exists public.delete_subscription(text);
+create or replace function public.delete_subscription(p_endpoint text, p_household uuid default null) returns void
 language sql security definer set search_path = public as $$
-  delete from push_subscriptions where endpoint = p_endpoint and user_id = auth.uid();
+  delete from push_subscriptions where endpoint = p_endpoint and user_id = auth.uid()
+    and (p_household is null or household_id = p_household);
 $$;
 
-create or replace function public.push_test(p_endpoint text) returns void
+drop function if exists public.push_test(text);
+create or replace function public.push_test(p_endpoint text, p_household uuid default null) returns void
 language plpgsql security definer set search_path = public as $$
 begin
-  update push_subscriptions set test = true where endpoint = p_endpoint and user_id = auth.uid();
+  update push_subscriptions set test = true where endpoint = p_endpoint and user_id = auth.uid()
+    and (p_household is null or household_id = p_household);
   if not found then raise exception 'not_found'; end if;
 end $$;
 
@@ -122,10 +129,10 @@ end $$;
 revoke all on public.push_config, public.push_subscriptions from anon, authenticated;
 revoke execute on function public.num_or(text, numeric), public.plants_due_count(uuid, date), public.push_targets(),
   public.setup_push(uuid, text, text, jsonb, text), public.push_public_key(), public.save_subscription(uuid, text, text, text, text, text),
-  public.delete_subscription(text), public.push_test(text) from public, anon;
+  public.delete_subscription(text, uuid), public.push_test(text, uuid) from public, anon;
 revoke execute on function public.push_targets(), public.plants_due_count(uuid, date) from authenticated;
 grant execute on function public.setup_push(uuid, text, text, jsonb, text), public.push_public_key(),
-  public.save_subscription(uuid, text, text, text, text, text), public.delete_subscription(text), public.push_test(text)
+  public.save_subscription(uuid, text, text, text, text, text), public.delete_subscription(text, uuid), public.push_test(text, uuid)
   to authenticated;
 
 -- ---------- Elke 5 minuten controleren ----------
