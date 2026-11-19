@@ -223,6 +223,11 @@ label.f textarea{min-height:76px;resize:vertical}
 .listswitch{margin-top:8px;border:1px solid var(--line);background:var(--surface);color:var(--leaf);font-weight:700;font-size:16px;border-radius:99px;padding:7px 14px}
 .listrow.on{border-color:var(--leaf);background:var(--leaf-soft)}
 .listrow:disabled{opacity:.7}
+
+.hero{position:relative}
+.hero-btn{position:absolute;right:12px;bottom:12px;display:flex;align-items:center;gap:8px;background:rgba(20,26,22,.72);color:#fff;border-radius:99px;padding:9px 14px;font-weight:600;font-size:14.5px;cursor:pointer;-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px)}
+.hero-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}
+.hero-btn.busy{opacity:.6;pointer-events:none}
 </style>
 </head>
 <body>
@@ -706,7 +711,7 @@ async function plantnetIdentify(blob, key, signal) {
 }
 
 /* ---------- state ---------- */
-const APP_VERSIE = "16 november 2026 (meerdere lijsten)";
+const APP_VERSIE = "17 november 2026 (foto vervangen)";
 const state = { stats: {}, monthTop: null, plants: [], tab: "today", loaded: false, loadError: "", offline: false, key: "", meldingen: { aan: false, stil: true }, members: [], photoCache: {} };
 const byId = id => state.plants.find(p => p.id === id);
 
@@ -880,7 +885,9 @@ function knownProblems(p) {
 function detailBody(p) {
   const st = waterStatus(p), fd = feedStatus(p), s = season(), src = photoSrc(p), h = p.gezondheid, fw = num(p.voedingWeken, 0);
   return `
-  <div class="hero">${src ? `<img src="${src}" alt="Foto van ${esc(p.label)}">` : `<div class="ph">${LEAF_SVG}</div>`}</div>
+  <div class="hero">${src ? `<img src="${src}" alt="Foto van ${esc(p.label)}">` : `<div class="ph">${LEAF_SVG}</div>`}
+    <label class="hero-btn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>${src ? "Foto vervangen" : "Foto toevoegen"}<input type="file" accept="image/*" id="heroPhoto"></label>
+  </div>
   <h1 class="d-title">${esc(p.label)}</h1>
   <p class="d-sub">${esc([p.naam, p.soort, p.kamer].filter(Boolean).join(", "))}</p>
   <div class="actions">
@@ -1918,6 +1925,16 @@ async function applyRitme() {
   const q = await patch(p.id, { [r.veld]: r.nieuw }, `Water voortaan elke ${r.nieuw} dagen`);
   if (q) { c.result.ritme = null; renderSheet(); }
 }
+async function replacePhoto(id, file) {
+  const p = byId(id); if (!p) return;
+  const btn = sheet.querySelector(".hero-btn"); if (btn) btn.classList.add("busy");
+  try {
+    const { dataUrl } = await processPhoto(file);
+    const q = await api.patch(id, { foto: dataUrl });
+    setLocal({ ...q, ...(isCloud() ? {} : { foto: dataUrl }) });
+    toast("Foto vervangen");
+  } catch (e) { toast(e?.msg || "De foto kon niet worden opgeslagen. Probeer een andere foto."); renderSheet(); }
+}
 async function deletePlant(id) {
   const p = byId(id); if (!p) return;
   if (!confirm(`${p.label} verwijderen? Dit kan niet ongedaan worden gemaakt${isCloud() ? ", ook niet voor je huisgenoten" : ""}.`)) return;
@@ -1989,6 +2006,7 @@ document.addEventListener("change", async e => {
   if (e.target.id === "nTime") { pushTime(e.target.value); return; }
   if (e.target.name === "nmode") { state.meldingen.stil = e.target.value === "stil"; await store.set("meldingen", state.meldingen); toast(state.meldingen.stil ? "Meldingen zijn stil" : "Meldingen met geluid en trillen"); return; }
   if (e.target.id === "importIn") { const f = e.target.files?.[0]; if (f) importBackup(f); return; }
+  if (e.target.id === "heroPhoto") { const f = e.target.files?.[0]; if (f && sheetCtx?.mode === "detail") replacePhoto(sheetCtx.id, f); return; }
   if (e.target.id !== "photoIn") return;
   const file = e.target.files?.[0]; if (!file) return;
   const c = sheetCtx;
